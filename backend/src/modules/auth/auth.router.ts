@@ -20,6 +20,7 @@ export class AuthRouter {
         }),
       )
       .mutation(async ({ input }) => {
+        // input ya tiene correo y contrasena como requeridos por el schema
         return this.authService.login(input);
       }),
 
