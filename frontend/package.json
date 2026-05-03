@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "npx shadcn@latest add button card input label select table tabs textarea badge dialog -y"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
