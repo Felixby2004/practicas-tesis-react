@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ export default function UsersPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [editData, setEditData] = useState<any>({});
+  const [facultadesList, setFacultadesList] = useState<any[]>([]);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.rol === 'ADMINISTRADOR' || user.rol === 'COORDINADOR';
@@ -31,7 +32,14 @@ export default function UsersPage() {
   const { data: estadisticas } = trpc.users.getEstadisticasByRol.useQuery({ rol: selectedRol });
   const { data: carreras } = trpc.carreras.getCarreras.useQuery(undefined, { enabled: selectedRol === 'ESTUDIANTE' });
   const { data: empresas } = trpc.companies.getEmpresas.useQuery(undefined, { enabled: selectedRol === 'REPRESENTANTE_EMPRESA' });
-  const { data: facultades } = trpc.facultades.getFacultades.useQuery(undefined, { enabled: selectedRol === 'COORDINADOR' });
+  const { data: facultades } = trpc.facultades.getFacultades.useQuery();
+
+  useEffect(() => {
+    console.log('Facultades cargadas:', facultades);
+    if (facultades) {
+      setFacultadesList(facultades as any[]);
+    }
+  }, [facultades]);
 
   const updateMutation = trpc.users.updateUsuario.useMutation({
     onSuccess: () => { toast.success('Actualizado correctamente'); setShowEditDialog(false); refetch(); },
@@ -50,15 +58,45 @@ export default function UsersPage() {
 
   const handleEdit = (usuario: any) => {
     setSelectedUser(usuario);
-    if (selectedRol === 'ESTUDIANTE') setEditData({ carrera_id: usuario.carrera_id, ciclo: usuario.ciclo, expediente: usuario.expediente || '' });
-    else if (selectedRol === 'DOCENTE') setEditData({ especialidad: usuario.especialidad || '', facultad: usuario.facultad || '' });
-    else if (selectedRol === 'COORDINADOR') setEditData({ facultad_id: usuario.facultad_id || '' });
-    else if (selectedRol === 'REPRESENTANTE_EMPRESA') setEditData({ empresa_id: usuario.empresa_id || '', cargo: usuario.cargo || '' });
+    if (selectedRol === 'ESTUDIANTE') {
+      setEditData({ carrera_id: usuario.carrera_id, ciclo: usuario.ciclo, expediente: usuario.expediente || '' });
+    } 
+    else if (selectedRol === 'DOCENTE') {
+      // Buscar el ID de la facultad por nombre para preseleccionar
+      let facultadId = '';
+      const facultadNombre = usuario.facultad_nombre || usuario.facultad;
+      if (facultadNombre && facultadesList.length > 0) {
+        const found = facultadesList.find(f => f.nombre === facultadNombre);
+        if (found) facultadId = found.id;
+      }
+      setEditData({ 
+        especialidad: usuario.especialidad || '', 
+        facultad_id: facultadId,
+        facultad_nombre: facultadNombre 
+      });
+    } 
+    else if (selectedRol === 'COORDINADOR') {
+      setEditData({ facultad_id: usuario.facultad_id || '' });
+    } 
+    else if (selectedRol === 'REPRESENTANTE_EMPRESA') {
+      setEditData({ empresa_id: usuario.empresa_id || '', cargo: usuario.cargo || '' });
+    }
     setShowEditDialog(true);
   };
 
   const handleUpdate = () => {
-    updateMutation.mutate({ id: selectedUser?.id, rol: selectedRol, data: editData });
+    let dataToSend = { ...editData };
+    
+    // Para docente, convertir facultad_id a nombre si es necesario
+    if (selectedRol === 'DOCENTE' && editData.facultad_id) {
+      const facultadSeleccionada = facultadesList.find(f => f.id === editData.facultad_id);
+      if (facultadSeleccionada) {
+        dataToSend.facultad = facultadSeleccionada.nombre;
+        delete dataToSend.facultad_id;
+      }
+    }
+    
+    updateMutation.mutate({ id: selectedUser?.id, rol: selectedRol, data: dataToSend });
   };
 
   const handleDelete = (id: string) => {
@@ -235,14 +273,31 @@ export default function UsersPage() {
 
       {/* Modal Editar */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent><DialogHeader><DialogTitle>Editar {getRolNombre().slice(0, -1)}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Editar {getRolNombre().slice(0, -1)}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             {selectedRol === 'ESTUDIANTE' && (<>
               <div><Label>Carrera</Label><Select value={editData.carrera_id} onValueChange={(v) => setEditData({ ...editData, carrera_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{(carreras as any[])?.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
               <div><Label>Ciclo</Label><Select value={editData.ciclo?.toString()} onValueChange={(v) => setEditData({ ...editData, ciclo: parseInt(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[1,2,3,4,5,6,7,8,9,10].map(c => <SelectItem key={c} value={c.toString()}>{c}°</SelectItem>)}</SelectContent></Select></div>
               <div><Label>Expediente URL</Label><Input value={editData.expediente} onChange={(e) => setEditData({ ...editData, expediente: e.target.value })} placeholder="https://..." /></div>
             </>)}
-            {selectedRol === 'DOCENTE' && (<><div><Label>Especialidad</Label><Input value={editData.especialidad} onChange={(e) => setEditData({ ...editData, especialidad: e.target.value })} /></div><div><Label>Facultad</Label><Input value={editData.facultad} onChange={(e) => setEditData({ ...editData, facultad: e.target.value })} /></div></>)}
+            
+            {selectedRol === 'DOCENTE' && (<>
+              <div><Label>Especialidad</Label><Input value={editData.especialidad} onChange={(e) => setEditData({ ...editData, especialidad: e.target.value })} /></div>
+              <div><Label>Facultad</Label>
+                <Select value={editData.facultad_id} onValueChange={(v) => setEditData({ ...editData, facultad_id: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar facultad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {facultadesList.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>{f.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>)}
+            
             {selectedRol === 'COORDINADOR' && (
               <div className="space-y-2">
                 <Label>Facultad</Label>
@@ -251,14 +306,19 @@ export default function UsersPage() {
                     <SelectValue placeholder="Seleccionar facultad" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(facultades as any[])?.map(f => (
+                    {facultadesList.map((f) => (
                       <SelectItem key={f.id} value={f.id}>{f.nombre}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
-            {selectedRol === 'REPRESENTANTE_EMPRESA' && (<><div><Label>Empresa</Label><Select value={editData.empresa_id} onValueChange={(v) => setEditData({ ...editData, empresa_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{(empresas as any[])?.map(e => <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>)}</SelectContent></Select></div><div><Label>Cargo</Label><Input value={editData.cargo} onChange={(e) => setEditData({ ...editData, cargo: e.target.value })} /></div></>)}
+            
+            {selectedRol === 'REPRESENTANTE_EMPRESA' && (<>
+              <div><Label>Empresa</Label><Select value={editData.empresa_id} onValueChange={(v) => setEditData({ ...editData, empresa_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{(empresas as any[])?.map(e => <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Cargo</Label><Input value={editData.cargo} onChange={(e) => setEditData({ ...editData, cargo: e.target.value })} /></div>
+            </>)}
+            
             <Button onClick={handleUpdate} className="w-full">Guardar Cambios</Button>
           </div>
         </DialogContent>

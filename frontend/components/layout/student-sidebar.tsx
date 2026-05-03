@@ -146,18 +146,6 @@ export function StudentSidebar({ user }: StudentSidebarProps) {
           "p-3 border-t space-y-2",
           collapsed ? "px-2" : ""
         )}>
-          {/* Botón de tema */}
-          <button
-            onClick={toggleTheme}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg w-full transition-colors hover:bg-accent",
-              collapsed && "justify-center"
-            )}
-            title={collapsed ? (theme === 'light' ? 'Modo oscuro' : 'Modo claro') : undefined}
-          >
-            {theme === 'light' ? <Moon className="h-5 w-5 shrink-0" /> : <Sun className="h-5 w-5 shrink-0" />}
-            {!collapsed && <span className="text-sm">{theme === 'light' ? 'Modo oscuro' : 'Modo claro'}</span>}
-          </button>
 
           {/* Perfil */}
           <div className={cn(

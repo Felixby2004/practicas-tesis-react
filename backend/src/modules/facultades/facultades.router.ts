@@ -24,7 +24,6 @@ export class FacultadesRouter {
       .query(async ({ input }) => {
         return this.prisma.facultad.findUnique({
           where: { id: input.id },
-          include: { carreras: true, coordinadores: { include: { usuario: true } } },
         });
       }),
   });

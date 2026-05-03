@@ -9,6 +9,7 @@ import { CarrerasRouter } from '../modules/carreras/carreras.router';
 import { DashboardRouter } from '../modules/dashboard/dashboard.router';
 import { UsersRouter } from '../modules/users/users.router';
 import { ThesisRouter } from '../modules/thesis/thesis.router';  // 👈 Agregar
+import { FacultadesRouter } from '../modules/facultades/facultades.router';
 
 @Injectable()
 export class TrpcRouter {
@@ -23,6 +24,7 @@ export class TrpcRouter {
     private readonly dashboardRouter: DashboardRouter,
     private readonly usersRouter: UsersRouter,
     private readonly thesisRouter: ThesisRouter,  // 👈 Agregar
+    private readonly facultadesRouter: FacultadesRouter,
   ) {}
 
   public readonly appRouter = this.trpcService.router({
@@ -35,5 +37,6 @@ export class TrpcRouter {
     dashboard: this.dashboardRouter.router,
     users: this.usersRouter.router,
     thesis: this.thesisRouter.router,  // 👈 Agregar
+    facultades: this.facultadesRouter.router,
   });
 }

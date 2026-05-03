@@ -9,6 +9,7 @@ import { CarrerasModule } from './modules/carreras/carreras.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { UsersModule } from './modules/users/users.module';
 import { ThesisModule } from './modules/thesis/thesis.module';  // 👈 Agregar
+import { FacultadesModule } from './modules/facultades/facultades.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DashboardModule,
     UsersModule,
     ThesisModule,  // 👈 Agregar
+    FacultadesModule,
   ],
 })
 export class AppModule {}

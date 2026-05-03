@@ -10,6 +10,7 @@ import { CarrerasModule } from '../modules/carreras/carreras.module';
 import { DashboardModule } from '../modules/dashboard/dashboard.module';
 import { UsersModule } from '../modules/users/users.module';
 import { ThesisModule } from '../modules/thesis/thesis.module';  // 👈 Agregar
+import { FacultadesModule } from '../modules/facultades/facultades.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ThesisModule } from '../modules/thesis/thesis.module';  // 👈 Agregar
     forwardRef(() => DashboardModule),
     forwardRef(() => UsersModule),
     forwardRef(() => ThesisModule),  // 👈 Agregar
+    forwardRef(() => FacultadesModule),
   ],
   providers: [TrpcService, TrpcRouter],
   exports: [TrpcService, TrpcRouter],
