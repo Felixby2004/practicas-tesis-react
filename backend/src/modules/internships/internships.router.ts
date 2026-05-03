@@ -79,7 +79,16 @@ export class InternshipsRouter {
     createOferta: this.trpcService.procedure
       .input(CreateOfertaSchema)
       .mutation(async ({ input }) => {
-        return this.internshipsService.createOferta(input);
+        // Conversión explícita de tipos
+        const ofertaData = {
+          empresa_id: input.empresa_id,
+          titulo: input.titulo,
+          descripcion: input.descripcion,
+          requisitos: input.requisitos,
+          fecha_limite_postulacion: input.fecha_limite_postulacion,
+          vacantes: input.vacantes,
+        };
+        return this.internshipsService.createOferta(ofertaData);
       }),
 
     updateOferta: this.trpcService.procedure
