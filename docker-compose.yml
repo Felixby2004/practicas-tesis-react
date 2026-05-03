@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: unt_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: unt_university_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - unt_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: unt_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:123456@postgres:5432/unt_university_db
+      JWT_SECRET: your-super-secret-jwt-key-change-this
+      JWT_EXPIRES_IN: 7d
+      PORT: 4000
+      NODE_ENV: production
+      FRONTEND_URL: http://localhost:3000/login
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+    networks:
+      - unt_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: unt_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:4000/trpc
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - unt_network
+
+volumes:
+  postgres_data:
+
+networks:
+  unt_network:
+    driver: bridge
