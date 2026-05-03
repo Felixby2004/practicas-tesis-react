@@ -126,7 +126,7 @@ export class InternshipsRouter {
     postular: this.trpcService.procedure
       .input(CreatePostulacionSchema)
       .mutation(async ({ input }) => {
-        return this.internshipsService.postular(input);
+        return this.internshipsService.postular(input as any);
       }),
 
     getPostulacionesByEstudiante: this.trpcService.procedure
