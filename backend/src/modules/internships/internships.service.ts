@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmailService } from '../../services/email.service';
 
 interface CreateOfertaDto {
   empresa_id: string;
@@ -42,11 +43,15 @@ interface CreateInformeDto {
 
 @Injectable()
 export class InternshipsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   // ========== OFERTAS CRUD ==========
   
   async createOferta(data: CreateOfertaDto) {
+
     const empresa = await this.prisma.empresa.findUnique({
       where: { id: data.empresa_id, activo: true },
     });
@@ -462,13 +467,17 @@ export class InternshipsService {
   async crearInforme(data: CreateInformeDto) {
     const postulacion = await this.prisma.postulacion.findUnique({
       where: { id: data.postulacion_id },
+      include: {
+        estudiante: { include: { usuario: true } },
+        asesores: { include: { docente: { include: { usuario: true } } } },
+      },
     });
 
     if (!postulacion) {
       throw new NotFoundException('Postulación no encontrada');
     }
 
-    return this.prisma.informePractica.create({
+    const informe = await this.prisma.informePractica.create({
       data: {
         postulacion_id: data.postulacion_id,
         tipo: data.tipo,
@@ -478,6 +487,19 @@ export class InternshipsService {
         estado: 'pendiente',
       },
     });
+
+    // Enviar email al asesor asignado
+    if (postulacion.asesores.length > 0) {
+      const primerAsesor = postulacion.asesores[0];
+      await this.emailService.sendInformeEntregadoEmail(
+        primerAsesor.docente.usuario.correo,
+        primerAsesor.docente.usuario.nombre_completo,
+        postulacion.estudiante.usuario.nombre_completo,
+        data.tipo
+      );
+    }
+
+    return informe;
   }
 
   async getInformesByPostulacion(postulacionId: string) {

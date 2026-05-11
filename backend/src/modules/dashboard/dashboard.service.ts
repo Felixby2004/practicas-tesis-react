@@ -128,4 +128,36 @@ export class DashboardService {
       registrosHoras,
     };
   }
+
+  async getEstadisticasPracticas() {
+    const postulacionesPorEstado = await this.prisma.postulacion.groupBy({
+      by: ['estado'],
+      _count: true,
+    });
+
+    // Agrupar postulaciones por mes
+    const postulacionesAll = await this.prisma.postulacion.findMany({
+      select: {
+        fecha_postulacion: true,
+      },
+    });
+
+    // Agrupar por mes
+    const practicasPorMesMap = new Map<string, number>();
+    postulacionesAll.forEach((p) => {
+      const fecha = new Date(p.fecha_postulacion);
+      const mes = `${fecha.getFullYear()}-${(fecha.getMonth() + 1).toString().padStart(2, '0')}`;
+      practicasPorMesMap.set(mes, (practicasPorMesMap.get(mes) || 0) + 1);
+    });
+
+    const practicasPorMes = Array.from(practicasPorMesMap.entries()).map(([mes, cantidad]) => ({
+      mes,
+      cantidad,
+    })).sort((a, b) => a.mes.localeCompare(b.mes));
+
+    return {
+      postulacionesPorEstado,
+      practicasPorMes,
+    };
+  }
 }

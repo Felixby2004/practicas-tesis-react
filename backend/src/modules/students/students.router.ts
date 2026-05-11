@@ -64,5 +64,21 @@ export class StudentsRouter {
       .query(async () => {
         return this.studentsService.getEstadisticas();
       }),
+
+    getDatosEstudianteForAutorizedUser: this.trpcService.procedure
+      .input(z.object({ estudianteId: z.string().uuid() }))
+      .query(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new Error('No autenticado');
+        }
+        // El método ahora recibe directamente los datos del usuario desde ctx.user
+        // El rol está disponible en ctx.user.rol (asumiendo que se carga en el middleware)
+        const rolUsuario = ctx.user?.rol || '';
+        return this.studentsService.getDatosEstudianteForAutorizedUser(
+          input.estudianteId,
+          ctx.user.id,
+          rolUsuario
+        );
+      }),
   });
 }

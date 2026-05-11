@@ -10,7 +10,11 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { UsersModule } from './modules/users/users.module';
 import { ThesisModule } from './modules/thesis/thesis.module';  // 👈 Agregar
 import { FacultadesModule } from './modules/facultades/facultades.module';
+import { ProfileModule } from './modules/profile/profile.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { EmailModule } from './services/email.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { CoordinatorModule } from './modules/coordinator/coordinator.module';
 
 @Module({
   imports: [
@@ -26,6 +30,10 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     ThesisModule,  // 👈 Agregar
     FacultadesModule,
+    ProfileModule,
+    EmailModule,
+    AdminModule,
+    CoordinatorModule,
   ],
 })
 export class AppModule {}

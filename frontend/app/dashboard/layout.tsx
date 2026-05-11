@@ -21,7 +21,7 @@ export default function DashboardLayout({
       router.push('/login');
     } else {
       const parsedUser = JSON.parse(userData || '{}');
-      if (parsedUser.rol === 'ESTUDIANTE') router.push('/student');
+      // Coordinadores también usan el dashboard de admin
       setUser(parsedUser);
     }
     setIsLoading(false);

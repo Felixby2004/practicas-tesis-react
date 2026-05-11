@@ -25,10 +25,10 @@ export class CompaniesService {
     const where = mostrarInactivas ? {} : { activo: true };
     
     return this.prisma.empresa.findMany({
-      where,
+      where: { activo: true },
       include: {
         ofertas: {
-          where: { estado: 'abierta' },
+          where: { estado: 'abierta', activo: true },
           take: 5,
         },
         convenios: {
@@ -169,5 +169,82 @@ export class CompaniesService {
     });
     
     return !!convenioActivo;
+  }
+
+  async assignRepresentative(usuarioId: string, empresaId: string, cargo?: string) {
+    // Verify usuario exists and has REPRESENTANTE_EMPRESA role
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      include: { rol: true },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (usuario.rol.nombre !== 'REPRESENTANTE_EMPRESA') {
+      throw new Error('El usuario debe tener el rol de REPRESENTANTE_EMPRESA');
+    }
+
+    // Verify empresa exists
+    const empresa = await this.findById(empresaId);
+    if (!empresa) {
+      throw new NotFoundException('Empresa no encontrada');
+    }
+
+    // Check if representative already exists for this user
+    const existing = await this.prisma.representanteEmpresa.findUnique({
+      where: { usuario_id: usuarioId },
+    });
+
+    if (existing) {
+      // Update if exists
+      return this.prisma.representanteEmpresa.update({
+        where: { usuario_id: usuarioId },
+        data: {
+          empresa_id: empresaId,
+          cargo: cargo,
+        },
+        include: {
+          usuario: true,
+          empresa: true,
+        },
+      });
+    }
+
+    // Create new representative
+    return this.prisma.representanteEmpresa.create({
+      data: {
+        usuario_id: usuarioId,
+        empresa_id: empresaId,
+        cargo: cargo || null,
+        activo: true,
+      },
+      include: {
+        usuario: true,
+        empresa: true,
+      },
+    });
+  }
+
+  async getCompanyByRepresentativeId(usuarioId: string) {
+    const representante = await this.prisma.representanteEmpresa.findUnique({
+      where: { usuario_id: usuarioId },
+      include: {
+        empresa: {
+          include: {
+            ofertas: true,
+            convenios: {
+              orderBy: { fecha_inicio: 'desc' },
+            },
+            representantes: {
+              include: { usuario: true },
+            },
+          },
+        },
+      },
+    });
+
+    return representante?.empresa || null;
   }
 }

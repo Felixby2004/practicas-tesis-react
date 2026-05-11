@@ -36,13 +36,20 @@ export default function StudentInternshipsPage() {
   }, []);
 
   const { data: ofertas = [], refetch: refetchOfertas } = trpc.internships.getOfertas.useQuery();
+  const { data: empresas = [], refetch: refetchEmpresas } = trpc.companies.getEmpresas.useQuery();
   const { data: misPostulaciones, refetch: refetchPostulaciones } = trpc.internships.getPostulacionesByEstudiante.useQuery(
     { estudianteId: estudianteId },
     { enabled: !!estudianteId }
   );
   
-  const postulacionAprobada = misPostulaciones?.find(p => p.estado === 'aprobada');
-  const asesor = postulacionAprobada?.asesores?.[0]?.docente;
+  // Enrich ofertas with full empresa data (including convenios)
+  const ofertasEnriquecidas = ofertas.map(oferta => ({
+    ...oferta,
+    empresa: empresas.find(e => e.id === oferta.empresa?.id) || oferta.empresa
+  }));
+  
+  const postulacionesAprobadas = misPostulaciones?.filter(p => p.estado === 'aprobada') || [];
+  const [postulacionActivaId, setPostulacionActivaId] = useState<string>('');
   
   const postularMutation = trpc.internships.postular.useMutation({
     onSuccess: () => { 
@@ -50,6 +57,7 @@ export default function StudentInternshipsPage() {
       setShowPostularDialog(false); 
       refetchPostulaciones(); 
       refetchOfertas();
+      refetchEmpresas();
     },
     onError: (error) => toast.error(error.message),
   });
@@ -76,7 +84,33 @@ export default function StudentInternshipsPage() {
 
   const yaPostulo = (ofertaId: string) => misPostulaciones?.some(p => p.oferta_id === ofertaId);
   const formatDate = (date: string) => new Date(date).toLocaleDateString();
-  const horasTotales = postulacionAprobada?.horas?.reduce((acc: number, h: any) => acc + h.horas_trabajadas, 0) || 0;
+  
+  const getConvenioStatus = (empresa: any) => {
+    if (!empresa?.convenios || empresa.convenios.length === 0) {
+      return { status: 'sin-convenio', label: 'Sin Convenio', color: 'text-red-600' };
+    }
+    const convenioActivo = empresa.convenios.find((c: any) => {
+      const hoy = new Date();
+      const inicio = new Date(c.fecha_inicio);
+      const fin = new Date(c.fecha_fin);
+      return inicio <= hoy && hoy <= fin;
+    });
+    
+    if (convenioActivo) {
+      return { status: 'activo', label: 'Convenio Activo', color: 'text-white' };
+    }
+    
+    const convenioFuturo = empresa.convenios.find((c: any) => new Date(c.fecha_inicio) > new Date());
+    if (convenioFuturo) {
+      return { status: 'pendiente', label: 'Convenio Pendiente', color: 'text-yellow-600' };
+    }
+    
+    return { status: 'vencido', label: 'Convenio Vencido', color: 'text-orange-600' };
+  };
+  
+  const postulacionActiva = postulacionesAprobadas.find(p => p.id === postulacionActivaId) || postulacionesAprobadas[0];
+  const asesor = postulacionActiva?.asesores?.[0]?.docente;
+  const horasTotales = postulacionActiva?.horas?.reduce((acc: number, h: any) => acc + h.horas_trabajadas, 0) || 0;
 
   const handlePostular = () => {
     if (!estudianteId) {
@@ -90,7 +124,7 @@ export default function StudentInternshipsPage() {
     });
   };
 
-  const filteredOfertas = (ofertas as any[]).filter(o => 
+  const filteredOfertas = (ofertasEnriquecidas as any[]).filter(o => 
     o.activo !== false && o.estado === 'abierta' && (
       o.titulo?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       o.empresa?.razon_social?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -138,32 +172,47 @@ export default function StudentInternshipsPage() {
                     <TableRow className="bg-muted/50">
                       <TableHead>Título</TableHead>
                       <TableHead>Empresa</TableHead>
+                      <TableHead>Convenio</TableHead>
                       <TableHead>Fecha Límite</TableHead>
                       <TableHead>Vacantes</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredOfertas.map(o => (
-                      <TableRow key={o.id} className="hover:bg-muted/30 transition-colors">
-                        <TableCell className="font-medium">{o.titulo}</TableCell>
-                        <TableCell>{o.empresa?.razon_social}</TableCell>
-                        <TableCell><span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(o.fecha_limite_postulacion)}</span></TableCell>
-                        <TableCell>{o.vacantes}</TableCell>
-                        <TableCell className="text-right">
-                          {yaPostulo(o.id) ? (
-                            <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Ya postulaste</Badge>
-                          ) : (
-                            <Button size="sm" variant="default" onClick={() => { setSelectedOferta(o); setShowPostularDialog(true); }}>Postular</Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredOfertas.map(o => {
+                      const convenio = getConvenioStatus(o.empresa);
+                      const puedePostular = convenio.status === 'activo' && !yaPostulo(o.id);
+                      return (
+                        <TableRow key={o.id} className={convenio.status !== 'activo' ? 'opacity-60 bg-muted/30' : 'hover:bg-muted/30 transition-colors'}>
+                          <TableCell className="font-medium">{o.titulo}</TableCell>
+                          <TableCell>{o.empresa?.razon_social}</TableCell>
+                          <TableCell>
+                            <Badge variant={convenio.status === 'activo' ? 'default' : 'secondary'} className={convenio.color}>
+                              {convenio.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell><span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(o.fecha_limite_postulacion)}</span></TableCell>
+                          <TableCell>{o.vacantes}</TableCell>
+                          <TableCell className="text-right">
+                            {yaPostulo(o.id) ? (
+                              <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Ya postulaste</Badge>
+                            ) : convenio.status !== 'activo' ? (
+                              <Badge variant="destructive" className="text-xs">Sin convenio activo</Badge>
+                            ) : (
+                              <Button size="sm" variant="default" onClick={() => { setSelectedOferta(o); setShowPostularDialog(true); }}>Postular</Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {filteredOfertas.length === 0 && (
-                      <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No hay ofertas disponibles</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hay ofertas disponibles</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
+              </div>
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-300">
+                <strong>💡 Nota:</strong> Solo puedes postularte a ofertas de empresas que tienen un convenio activo vigente.
               </div>
             </CardContent>
           </Card>
@@ -195,99 +244,124 @@ export default function StudentInternshipsPage() {
         </TabsContent>
 
         <TabsContent value="seguimiento" className="mt-6">
-          {postulacionAprobada ? (
+          {postulacionesAprobadas.length > 0 ? (
             <div className="space-y-6">
-              <Card className="border-l-4 border-l-green-500">
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-start flex-wrap gap-4">
-                    <div>
-                      <h3 className="font-semibold text-xl">{postulacionAprobada.oferta?.titulo}</h3>
-                      <p className="text-muted-foreground">{postulacionAprobada.oferta?.empresa?.razon_social}</p>
+              {postulacionesAprobadas.length > 1 && (
+                <Card className="border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground mb-3">Selecciona una práctica para ver el seguimiento:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {postulacionesAprobadas.map((p) => (
+                        <Button
+                          key={p.id}
+                          variant={postulacionActiva?.id === p.id ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPostulacionActivaId(p.id)}
+                          className="flex-1 sm:flex-none"
+                        >
+                          {p.oferta?.titulo}
+                        </Button>
+                      ))}
                     </div>
-                    <Badge className="bg-green-500">Aprobada</Badge>
-                  </div>
-                  {asesor && (
-                    <div className="mt-4 p-3 rounded-lg bg-primary/10 flex items-center gap-2">
-                      <UserCheck className="h-4 w-4 text-primary" />
-                      <span className="text-sm">Asesor: <span className="font-medium">{asesor.usuario?.nombre_completo}</span></span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card>
-                <CardHeader className="flex flex-row justify-between items-center">
-                  <CardTitle className="text-lg flex items-center gap-2"><Clock className="h-5 w-5" /> Horas Registradas</CardTitle>
-                  <Button size="sm" onClick={() => setShowHorasDialog(true)}><Plus className="h-4 w-4 mr-1" /> Registrar Horas</Button>
-                </CardHeader>
-                <CardContent>
-                  {postulacionAprobada.horas?.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">No hay horas registradas</div>
-                  ) : (
-                    <>
-                      <div className="rounded-md border">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Fecha</TableHead>
-                              <TableHead>Horas</TableHead>
-                              <TableHead>Descripción</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {postulacionAprobada.horas.map((h: any) => (
-                              <TableRow key={h.id}>
-                                <TableCell>{formatDate(h.fecha)}</TableCell>
-                                <TableCell className="font-mono">{h.horas_trabajadas}</TableCell>
-                                <TableCell>{h.descripcion_actividad}</TableCell>
+              {postulacionActiva && (
+                <>
+                  <Card className="border-l-4 border-l-green-500">
+                    <CardContent className="pt-6">
+                      <div className="flex justify-between items-start flex-wrap gap-4">
+                        <div>
+                          <h3 className="font-semibold text-xl">{postulacionActiva.oferta?.titulo}</h3>
+                          <p className="text-muted-foreground">{postulacionActiva.oferta?.empresa?.razon_social}</p>
+                        </div>
+                        <Badge className="bg-green-500">Aprobada</Badge>
+                      </div>
+                      {asesor && (
+                        <div className="mt-4 p-3 rounded-lg bg-primary/10 flex items-center gap-2">
+                          <UserCheck className="h-4 w-4 text-primary" />
+                          <span className="text-sm">Asesor: <span className="font-medium">{asesor.usuario?.nombre_completo}</span></span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row justify-between items-center">
+                      <CardTitle className="text-lg flex items-center gap-2"><Clock className="h-5 w-5" /> Horas Registradas</CardTitle>
+                      <Button size="sm" onClick={() => setShowHorasDialog(true)}><Plus className="h-4 w-4 mr-1" /> Registrar Horas</Button>
+                    </CardHeader>
+                    <CardContent>
+                      {postulacionActiva.horas?.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">No hay horas registradas</div>
+                      ) : (
+                        <>
+                          <div className="rounded-md border">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Horas</TableHead>
+                                  <TableHead>Descripción</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {postulacionActiva.horas.map((h: any) => (
+                                  <TableRow key={h.id}>
+                                    <TableCell>{formatDate(h.fecha)}</TableCell>
+                                    <TableCell className="font-mono">{h.horas_trabajadas}</TableCell>
+                                    <TableCell>{h.descripcion_actividad}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                          <div className="mt-4 text-right">
+                            <p className="text-sm text-muted-foreground">Total acumulado:</p>
+                            <p className="text-2xl font-bold text-primary">{horasTotales} horas</p>
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row justify-between items-center">
+                      <CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" /> Mis Informes</CardTitle>
+                      <Button size="sm" onClick={() => setShowInformeDialog(true)}><Plus className="h-4 w-4 mr-1" /> Subir Informe</Button>
+                    </CardHeader>
+                    <CardContent>
+                      {postulacionActiva.informes?.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">No hay informes subidos</div>
+                      ) : (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Tipo</TableHead>
+                                <TableHead>Título</TableHead>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Estado</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                      <div className="mt-4 text-right">
-                        <p className="text-sm text-muted-foreground">Total acumulado:</p>
-                        <p className="text-2xl font-bold text-primary">{horasTotales} horas</p>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row justify-between items-center">
-                  <CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" /> Mis Informes</CardTitle>
-                  <Button size="sm" onClick={() => setShowInformeDialog(true)}><Plus className="h-4 w-4 mr-1" /> Subir Informe</Button>
-                </CardHeader>
-                <CardContent>
-                  {postulacionAprobada.informes?.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">No hay informes subidos</div>
-                  ) : (
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead>Título</TableHead>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Estado</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {postulacionAprobada.informes.map((i: any) => (
-                            <TableRow key={i.id}>
-                              <TableCell className="capitalize">{i.tipo}</TableCell>
-                              <TableCell>{i.titulo}</TableCell>
-                              <TableCell>{formatDate(i.fecha_entrega)}</TableCell>
-                              <TableCell><Badge variant={i.estado === 'revisado' ? 'default' : 'secondary'}>{i.estado === 'revisado' ? 'Revisado' : 'Pendiente'}</Badge></TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                            </TableHeader>
+                            <TableBody>
+                              {postulacionActiva.informes.map((i: any) => (
+                                <TableRow key={i.id}>
+                                  <TableCell className="capitalize">{i.tipo}</TableCell>
+                                  <TableCell>{i.titulo}</TableCell>
+                                  <TableCell>{formatDate(i.fecha_entrega)}</TableCell>
+                                  <TableCell><Badge variant={i.estado === 'revisado' ? 'default' : 'secondary'}>{i.estado === 'revisado' ? 'Revisado' : 'Pendiente'}</Badge></TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           ) : (
             <Card>
@@ -325,7 +399,7 @@ export default function StudentInternshipsPage() {
 
       <Dialog open={showHorasDialog} onOpenChange={setShowHorasDialog}>
         <DialogContent>
-          <DialogHeader><DialogTitle>⏰ Registrar Horas</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>⏰ Registrar Horas - {postulacionActiva?.oferta?.titulo}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Horas trabajadas</Label>
@@ -335,14 +409,14 @@ export default function StudentInternshipsPage() {
               <Label>Descripción de actividades</Label>
               <Textarea placeholder="Describe las actividades realizadas..." rows={3} value={horasData.descripcion_actividad} onChange={(e) => setHorasData({ ...horasData, descripcion_actividad: e.target.value })} />
             </div>
-            <Button onClick={() => registrarHorasMutation.mutate({ postulacion_id: postulacionAprobada?.id, ...horasData })} className="w-full">Guardar Horas</Button>
+            <Button onClick={() => registrarHorasMutation.mutate({ postulacion_id: postulacionActiva?.id, ...horasData })} className="w-full">Guardar Horas</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showInformeDialog} onOpenChange={setShowInformeDialog}>
         <DialogContent>
-          <DialogHeader><DialogTitle>📄 Subir Informe</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>📄 Subir Informe - {postulacionActiva?.oferta?.titulo}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Tipo de Informe</Label>
@@ -354,7 +428,7 @@ export default function StudentInternshipsPage() {
             </div>
             <div className="space-y-2"><Label>Título</Label><Input placeholder="Título del informe" value={informeData.titulo} onChange={(e) => setInformeData({ ...informeData, titulo: e.target.value })} /></div>
             <div className="space-y-2"><Label>Contenido</Label><Textarea placeholder="Describe los avances y resultados..." rows={5} value={informeData.contenido} onChange={(e) => setInformeData({ ...informeData, contenido: e.target.value })} /></div>
-            <Button onClick={() => crearInformeMutation.mutate({ postulacion_id: postulacionAprobada?.id, ...informeData as any })} className="w-full">Enviar Informe</Button>
+            <Button onClick={() => crearInformeMutation.mutate({ postulacion_id: postulacionActiva?.id, ...informeData as any })} className="w-full">Enviar Informe</Button>
           </div>
         </DialogContent>
       </Dialog>

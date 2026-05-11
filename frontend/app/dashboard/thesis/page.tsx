@@ -451,8 +451,29 @@ export default function ThesisPage() {
                         <Dialog open={showEditSustentacionDialog} onOpenChange={setShowEditSustentacionDialog}>
                           <DialogTrigger asChild>
                             <Button variant="outline" size="sm" className="mt-3" onClick={() => {
+                              // Función segura para obtener la fecha en formato YYYY-MM-DDTHH:mm
+                              const getFechaString = (fecha: any): string => {
+                                if (!fecha) return '';
+                                if (typeof fecha === 'string') {
+                                  // Si es string, intentar formatear
+                                  if (fecha.includes('T')) {
+                                    return fecha.substring(0, 16); // YYYY-MM-DDTHH:mm
+                                  }
+                                  return fecha;
+                                }
+                                if (fecha instanceof Date) {
+                                  const año = fecha.getFullYear();
+                                  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+                                  const dia = String(fecha.getDate()).padStart(2, '0');
+                                  const horas = String(fecha.getHours()).padStart(2, '0');
+                                  const minutos = String(fecha.getMinutes()).padStart(2, '0');
+                                  return `${año}-${mes}-${dia}T${horas}:${minutos}`;
+                                }
+                                return '';
+                              };
+                              
                               setEditSustentacion({
-                                fecha_hora: selectedTesis.sustentacion.fecha_hora?.split('T')[0] + 'T' + (selectedTesis.sustentacion.fecha_hora?.split('T')[1] || '00:00'),
+                                fecha_hora: getFechaString(selectedTesis.sustentacion.fecha_hora),
                                 lugar: selectedTesis.sustentacion.lugar || '',
                                 resultado: selectedTesis.sustentacion.resultado || '',
                                 acta_url: selectedTesis.sustentacion.acta_url || '',
@@ -464,19 +485,36 @@ export default function ThesisPage() {
                           <DialogContent>
                             <DialogHeader><DialogTitle>✏️ Editar Sustentación</DialogTitle></DialogHeader>
                             <div className="space-y-4">
-                              <Input type="datetime-local" value={editSustentacion.fecha_hora} onChange={(e) => setEditSustentacion({ ...editSustentacion, fecha_hora: e.target.value })} />
-                              <Input placeholder="Lugar" value={editSustentacion.lugar} onChange={(e) => setEditSustentacion({ ...editSustentacion, lugar: e.target.value })} />
+                              <Input 
+                                type="datetime-local" 
+                                value={editSustentacion.fecha_hora} 
+                                onChange={(e) => setEditSustentacion({ ...editSustentacion, fecha_hora: e.target.value })} 
+                              />
+                              <Input 
+                                placeholder="Lugar" 
+                                value={editSustentacion.lugar} 
+                                onChange={(e) => setEditSustentacion({ ...editSustentacion, lugar: e.target.value })} 
+                              />
                               <Select value={editSustentacion.resultado} onValueChange={(v) => setEditSustentacion({ ...editSustentacion, resultado: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Resultado" />
+                                </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="Aprobado">✅ Aprobado</SelectItem>
                                   <SelectItem value="Desaprobado">❌ Desaprobado</SelectItem>
                                   <SelectItem value="Aprobado con mención">🏅 Aprobado con mención</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <Input placeholder="URL del Acta" value={editSustentacion.acta_url} onChange={(e) => setEditSustentacion({ ...editSustentacion, acta_url: e.target.value })} />
+                              <Input 
+                                placeholder="URL del Acta" 
+                                value={editSustentacion.acta_url} 
+                                onChange={(e) => setEditSustentacion({ ...editSustentacion, acta_url: e.target.value })} 
+                              />
                               <Button onClick={() => {
-                                registrarSustentacionMutation.mutate({ tesis_id: selectedTesis.id, ...editSustentacion });
+                                registrarSustentacionMutation.mutate({ 
+                                  tesis_id: selectedTesis.id, 
+                                  ...editSustentacion 
+                                });
                                 setShowEditSustentacionDialog(false);
                               }}>Guardar Cambios</Button>
                             </div>

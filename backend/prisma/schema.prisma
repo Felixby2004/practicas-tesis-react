@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,25 +7,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================== ROLES Y USUARIOS ====================
+
 model Rol {
-  id              String   @id @default(uuid())
-  nombre          String   @unique // ADMINISTRADOR, COORDINADOR, DOCENTE, ESTUDIANTE, REPRESENTANTE_EMPRESA
-  descripcion     String?
-  usuarios        Usuario[]
+  id          String   @id @default(uuid())
+  nombre      String   @unique // ADMINISTRADOR, COORDINADOR, DOCENTE, ESTUDIANTE, REPRESENTANTE_EMPRESA
+  descripcion String?
+  usuarios    Usuario[]
 
   @@map("roles")
 }
 
 model Usuario {
-  id              String   @id @default(uuid())
-  correo          String   @unique
-  contrasena      String
-  nombre_completo String?
-  rol_id          String
-  rol             Rol      @relation(fields: [rol_id], references: [id])
-  fecha_creacion  DateTime @default(now())
-  fecha_actualizacion DateTime @updatedAt
-  
+  id                     String   @id @default(uuid())
+  correo                 String   @unique
+  contrasena             String
+  nombre_completo        String?
+  rol_id                 String
+  rol                    Rol      @relation(fields: [rol_id], references: [id])
+  debe_cambiar_contrasena Boolean @default(false)
+  ultimo_cambio_contrasena DateTime?
+  activo                 Boolean  @default(true)
+  fecha_creacion         DateTime @default(now())
+  fecha_actualizacion    DateTime @updatedAt
+
   estudiante      Estudiante?
   docente         Docente?
   coordinador     Coordinador?
@@ -38,17 +40,20 @@ model Usuario {
   @@map("usuarios")
 }
 
+// ==================== FACULTADES Y CARRERAS ====================
+
 model Facultad {
-  id              String   @id @default(uuid())
-  nombre          String   @unique
-  descripcion     String?
-  decano          String?
-  activo          Boolean  @default(true)
-  fecha_creacion  DateTime @default(now())
+  id          String   @id @default(uuid())
+  nombre      String   @unique
+  descripcion String?
+  decano      String?
+  activo      Boolean  @default(true)
+  fecha_creacion DateTime @default(now())
   fecha_actualizacion DateTime @updatedAt
 
-  carreras        Carrera[]
-  coordinadores   Coordinador[]
+  carreras      Carrera[]
+  coordinadores Coordinador[]
+  // docentes NO debe estar aquí porque Docente.facultad es String, no relación
 
   @@map("facultades")
 }
@@ -56,7 +61,7 @@ model Facultad {
 model Carrera {
   id          String   @id @default(uuid())
   nombre      String   @unique
-  area        String   // A, B, C, D (Ciencias, Ingeniería, Salud, Humanidades)
+  area        String   // A, B, C, D
   descripcion String?
   facultad_id String?
   facultad    Facultad? @relation(fields: [facultad_id], references: [id])
@@ -67,6 +72,52 @@ model Carrera {
   estudiantes Estudiante[]
 
   @@map("carreras")
+}
+
+// ==================== ESTUDIANTES ====================
+
+model Estudiante {
+  id              String   @id @default(uuid())
+  usuario_id      String   @unique
+  usuario         Usuario  @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  codigo_univ     String   @unique
+  carrera_id      String
+  carrera         Carrera  @relation(fields: [carrera_id], references: [id])
+  ciclo           Int
+  expediente_url  String?
+  activo          Boolean  @default(true)
+  fecha_creacion  DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  postulaciones   Postulacion[]
+  proyectos_tesis ProyectoTesis[]
+  practicas_completadas Boolean @default(false)
+  horas_totales   Int     @default(0)
+
+  @@index([usuario_id])
+  @@index([codigo_univ])
+  @@map("estudiantes")
+}
+
+// ==================== DOCENTES Y COORDINADORES ====================
+
+model Docente {
+  id              String   @id @default(uuid())
+  usuario_id      String   @unique
+  usuario         Usuario  @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  especialidad    String
+  facultad        String?   // 👈 Esto es un string simple, NO una relación
+  activo          Boolean  @default(true)
+  fecha_creacion  DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  asesorias_practicas AsignacionAsesor[]
+  tesis_asesoradas    ProyectoTesis[]    @relation("AsesorTesis")
+  tesis_como_jurado   JuradoTesis[]
+  evaluaciones        EvaluacionPractica[]
+
+  @@index([usuario_id])
+  @@map("docentes")
 }
 
 model Coordinador {
@@ -84,43 +135,7 @@ model Coordinador {
   @@map("coordinadores")
 }
 
-model Estudiante {
-  id              String   @id @default(uuid())
-  usuario_id      String   @unique
-  usuario         Usuario  @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  codigo_univ     String   @unique
-  carrera_id      String
-  carrera         Carrera  @relation(fields: [carrera_id], references: [id])
-  ciclo           Int
-  expediente      String?  @db.Text
-  activo          Boolean  @default(true)
-  fecha_creacion  DateTime @default(now())
-  fecha_actualizacion DateTime @updatedAt
-  postulaciones   Postulacion[]
-  proyectos_tesis ProyectoTesis[]
-  @@index([usuario_id])
-  @@index([codigo_univ])
-  @@map("estudiantes")
-}
-
-model Docente {
-  id              String   @id @default(uuid())
-  usuario_id      String   @unique
-  usuario         Usuario  @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  especialidad    String
-  facultad        String?
-  activo          Boolean  @default(true)
-  fecha_creacion  DateTime @default(now())
-  fecha_actualizacion DateTime @updatedAt
-  
-  asesorias_practicas AsignacionAsesor[]
-  tesis_asesoradas    ProyectoTesis[]    @relation("AsesorTesis")
-  tesis_como_jurado   JuradoTesis[]
-  // Eliminar la relación coordinador porque Coordinador se relaciona por usuario_id
-
-  @@index([usuario_id])
-  @@map("docentes")
-}
+// ==================== EMPRESAS Y CONVENIOS ====================
 
 model Empresa {
   id              String   @id @default(uuid())
@@ -150,6 +165,7 @@ model RepresentanteEmpresa {
   activo          Boolean  @default(true)
   fecha_creacion  DateTime @default(now())
   fecha_actualizacion DateTime @updatedAt
+
   @@index([usuario_id])
   @@index([empresa_id])
   @@map("representantes_empresa")
@@ -162,7 +178,7 @@ model Convenio {
   tipo            String   // Marco, Especifico
   fecha_inicio    DateTime
   fecha_fin       DateTime?
-  estado          String   @default("activo") // activo, vencido, rescindido
+  estado          String   @default("activo")
   archivo_url     String?
   fecha_creacion  DateTime @default(now())
   fecha_actualizacion DateTime @updatedAt
@@ -171,8 +187,28 @@ model Convenio {
   @@map("convenios")
 }
 
+// ==================== PRÁCTICAS PREPROFESIONALES ====================
+
+model Convocatoria {
+  id              String   @id @default(uuid())
+  titulo          String
+  descripcion     String
+  fecha_inicio    DateTime
+  fecha_fin       DateTime
+  bases_url       String?
+  activo          Boolean  @default(true)
+  fecha_creacion  DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  ofertas         OfertaPractica[]
+
+  @@map("convocatorias")
+}
+
 model OfertaPractica {
   id                      String   @id @default(uuid())
+  convocatoria_id         String?
+  convocatoria            Convocatoria? @relation(fields: [convocatoria_id], references: [id])
   empresa_id              String
   empresa                 Empresa  @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
   titulo                  String
@@ -180,8 +216,10 @@ model OfertaPractica {
   requisitos              String   @db.Text
   fecha_publicacion       DateTime @default(now())
   fecha_limite_postulacion DateTime
+  fecha_inicio_practica   DateTime?
+  fecha_fin_practica      DateTime?
   vacantes                Int
-  estado                  String   @default("abierta") // abierta, cerrada
+  estado                  String   @default("abierta")
   activo                  Boolean  @default(true)
   fecha_creacion          DateTime @default(now())
   fecha_actualizacion     DateTime @updatedAt
@@ -199,14 +237,22 @@ model Postulacion {
   estudiante_id    String
   estudiante       Estudiante  @relation(fields: [estudiante_id], references: [id], onDelete: Cascade)
   fecha_postulacion DateTime @default(now())
-  estado           String   @default("pendiente") // pendiente, aprobada, rechazada
+  estado           String   @default("pendiente")
   curriculum_url   String?
+  carta_presentacion_url String?
+  fecha_aprobacion DateTime?
+  fecha_inicio     DateTime?
+  fecha_fin        DateTime?
+  fecha_culminacion DateTime?
   fecha_creacion   DateTime @default(now())
   fecha_actualizacion DateTime @updatedAt
 
   asesores         AsignacionAsesor[]
   horas            RegistroHoras[]
   informes         InformePractica[]
+  evaluacion       EvaluacionPractica?
+  pago             PagoPractica?
+  certificado      CertificadoPractica?
 
   @@index([oferta_id])
   @@index([estudiante_id])
@@ -235,6 +281,8 @@ model RegistroHoras {
   fecha                 DateTime @default(now())
   horas_trabajadas      Int
   descripcion_actividad String   @db.Text
+  validado_empresa      Boolean  @default(false)
+  validado_asesor       Boolean  @default(false)
   fecha_creacion        DateTime @default(now())
   fecha_actualizacion   DateTime @updatedAt
 
@@ -251,13 +299,65 @@ model InformePractica {
   contenido        String?  @db.Text
   archivo_url      String?
   fecha_entrega    DateTime @default(now())
-  estado           String   @default("pendiente") // pendiente, revisado, observado
+  estado           String   @default("pendiente")
+  fecha_revision   DateTime?
+  observaciones    String?
   fecha_creacion   DateTime @default(now())
   fecha_actualizacion DateTime @updatedAt
 
   @@index([postulacion_id])
   @@map("informes_practicas")
 }
+
+model EvaluacionPractica {
+  id               String   @id @default(uuid())
+  postulacion_id   String   @unique
+  postulacion      Postulacion @relation(fields: [postulacion_id], references: [id], onDelete: Cascade)
+  rubrica          Json
+  nota_final       Float?
+  comentarios      String?
+  evaluador_id     String
+  docente          Docente  @relation(fields: [evaluador_id], references: [id], onDelete: Cascade)
+  fecha_evaluacion DateTime @default(now())
+  fecha_creacion   DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  @@index([postulacion_id])
+  @@map("evaluaciones_practicas")
+}
+
+model PagoPractica {
+  id               String   @id @default(uuid())
+  postulacion_id   String   @unique
+  postulacion      Postulacion @relation(fields: [postulacion_id], references: [id], onDelete: Cascade)
+  monto            Float
+  comprobante_url  String?
+  fecha_pago       DateTime
+  estado           String   @default("pendiente")
+  observaciones    String?
+  fecha_creacion   DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  @@index([postulacion_id])
+  @@map("pagos_practicas")
+}
+
+model CertificadoPractica {
+  id               String   @id @default(uuid())
+  postulacion_id   String   @unique
+  postulacion      Postulacion @relation(fields: [postulacion_id], references: [id], onDelete: Cascade)
+  codigo           String   @unique
+  fecha_emision    DateTime @default(now())
+  url_pdf          String?
+  qr_code          String?
+  fecha_creacion   DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+
+  @@index([postulacion_id])
+  @@map("certificados_practicas")
+}
+
+// ==================== TESIS ====================
 
 model ProyectoTesis {
   id               String   @id @default(uuid())
@@ -267,8 +367,9 @@ model ProyectoTesis {
   asesor           Docente    @relation("AsesorTesis", fields: [asesor_id], references: [id], onDelete: Cascade)
   titulo           String
   descripcion      String     @db.Text
-  estado           String     @default("propuesta") // propuesta, en_curso, sustentada, finalizada
+  estado           String     @default("propuesta")
   fecha_registro   DateTime   @default(now())
+  fecha_aprobacion DateTime?
   fecha_creacion   DateTime   @default(now())
   fecha_actualizacion DateTime @updatedAt
 
@@ -289,7 +390,7 @@ model EntregableTesis {
   descripcion      String?    @db.Text
   fecha_limite     DateTime
   fecha_entrega    DateTime?
-  estado           String     @default("pendiente") // pendiente, entregado, observado, aprobado
+  estado           String     @default("pendiente")
   archivo_url      String?
   observaciones    String?    @db.Text
   fecha_creacion   DateTime   @default(now())
@@ -305,8 +406,9 @@ model JuradoTesis {
   tesis            ProyectoTesis @relation(fields: [tesis_id], references: [id], onDelete: Cascade)
   docente_id       String
   docente          Docente       @relation(fields: [docente_id], references: [id], onDelete: Cascade)
-  cargo            String?       // Presidente, Secretario, Vocal
-  fecha_creacion   DateTime      @default(now())
+  cargo            String?
+  fecha_asignacion DateTime @default(now())
+  fecha_creacion   DateTime @default(now())
 
   @@index([tesis_id])
   @@index([docente_id])
@@ -319,7 +421,7 @@ model Sustentacion {
   tesis            ProyectoTesis @relation(fields: [tesis_id], references: [id], onDelete: Cascade)
   fecha_hora       DateTime
   lugar            String?
-  resultado        String?       // Aprobado, Desaprobado, Aprobado con mención
+  resultado        String?
   acta_url         String?
   fecha_creacion   DateTime      @default(now())
   fecha_actualizacion DateTime   @updatedAt
@@ -328,19 +430,21 @@ model Sustentacion {
   @@map("sustentaciones_tesis")
 }
 
+// ==================== SOLICITUDES DE REGISTRO ====================
+
 model SolicitudRegistro {
   id              String   @id @default(uuid())
   correo          String   @unique
   contrasena      String
   nombre_completo String
-  rol_solicitado  String   // ESTUDIANTE, DOCENTE, COORDINADOR, REPRESENTANTE_EMPRESA
-  carrera_id      String?  // Solo para estudiantes
-  ciclo           Int?     // Solo para estudiantes
-  especialidad    String?  // Solo para docentes
-  facultad        String?  // Solo para docentes
-  facultad_id     String?  // Solo para coordinadores 👈 Agregar este campo
-  empresa_id      String?  // Solo para representantes
-  cargo           String?  // Solo para representantes
+  rol_solicitado  String
+  carrera_id      String?
+  ciclo           Int?
+  especialidad    String?
+  facultad        String?  // Para DOCENTE (nombre de facultad como string)
+  facultad_id     String?  // Para COORDINADOR (relación UUID con tabla Facultad)
+  empresa_id      String?
+  cargo           String?
   estado          String   @default("pendiente")
   observaciones   String?
   fecha_solicitud DateTime @default(now())

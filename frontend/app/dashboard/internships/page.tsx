@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,7 +41,15 @@ export default function InternshipsPage() {
   const [selectedOfertaId, setSelectedOfertaId] = useState<string | null>(null);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState('');
   const [newOferta, setNewOferta] = useState({ titulo: '', descripcion: '', requisitos: '', fecha_limite_postulacion: '', vacantes: 1 });
-  const [editOferta, setEditOferta] = useState({ id: '', titulo: '', descripcion: '', requisitos: '', fecha_limite_postulacion: '', vacantes: 1, estado: 'abierta' });
+  const [editOferta, setEditOferta] = useState({ 
+    id: '', 
+    titulo: '', 
+    descripcion: '', 
+    requisitos: '', 
+    fecha_limite_postulacion: '',  // 👈 Asegurar que sea string vacío inicialmente
+    vacantes: 1, 
+    estado: 'abierta' 
+  });
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.rol === 'ADMINISTRADOR' || user.rol === 'COORDINADOR';
@@ -53,13 +61,27 @@ export default function InternshipsPage() {
     { estudianteId: user.estudiante?.id || '' }, { enabled: !!user.estudiante?.id }
   );
 
+  // Update editOferta when ofertas changes (to show fresh data if modal is still open)
+  useEffect(() => {
+    if (showEditDialog && editOferta.id) {
+      const updatedOferta = (ofertas as Oferta[]).find(o => o.id === editOferta.id);
+      if (updatedOferta) {
+        handleEditOferta(updatedOferta);
+      }
+    }
+  }, [ofertas, showEditDialog, editOferta.id]);
+
   const createOfertaMutation = trpc.internships.createOferta.useMutation({
     onSuccess: () => { toast.success('Oferta creada'); setShowCreateDialog(false); refetch(); setNewOferta({ titulo: '', descripcion: '', requisitos: '', fecha_limite_postulacion: '', vacantes: 1 }); },
     onError: (error) => toast.error(error.message),
   });
 
   const updateOfertaMutation = trpc.internships.updateOferta.useMutation({
-    onSuccess: () => { toast.success('Oferta actualizada'); setShowEditDialog(false); refetch(); },
+    onSuccess: () => { 
+      toast.success('Oferta actualizada'); 
+      refetch(); // Refresh the list
+      setShowEditDialog(false); // Close modal
+    },
     onError: (error) => toast.error(error.message),
   });
 
@@ -78,12 +100,24 @@ export default function InternshipsPage() {
 
   const handleEditOferta = (oferta: Oferta) => {
     setSelectedOfertaId(oferta.id);
+    
+    // Manejar la fecha correctamente (puede ser string o Date)
+    let fechaStr = '';
+    if (oferta.fecha_limite_postulacion) {
+      if (typeof oferta.fecha_limite_postulacion === 'string') {
+        fechaStr = oferta.fecha_limite_postulacion.split('T')[0];
+      } else if (typeof oferta.fecha_limite_postulacion === 'object') {
+        // Si es un objeto Date
+        fechaStr = new Date(oferta.fecha_limite_postulacion).toISOString().split('T')[0];
+      }
+    }
+    
     setEditOferta({
       id: oferta.id,
       titulo: oferta.titulo,
       descripcion: oferta.descripcion,
       requisitos: oferta.requisitos,
-      fecha_limite_postulacion: oferta.fecha_limite_postulacion.split('T')[0],
+      fecha_limite_postulacion: fechaStr,
       vacantes: oferta.vacantes,
       estado: oferta.estado,
     });
@@ -115,61 +149,6 @@ export default function InternshipsPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div><h1 className="text-2xl font-bold text-foreground">Prácticas Preprofesionales</h1><p className="text-gray-500">Gestión de ofertas y postulaciones</p></div>
-        {(isAdmin || isRepresentante) && (
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />Nueva Oferta</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="text-lg font-bold">📋 Crear Nueva Oferta</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                {isAdmin && (
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold">🏢 Empresa *</Label>
-                    <Select value={selectedEmpresaId} onValueChange={setSelectedEmpresaId}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Seleccionar empresa" /></SelectTrigger>
-                      <SelectContent>
-                        {(empresas as Empresa[])?.map(e => <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold">📌 Título *</Label>
-                  <Input placeholder="Ej: Desarrollador Web" value={newOferta.titulo} onChange={(e) => setNewOferta({ ...newOferta, titulo: e.target.value })} className="h-9" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold">📝 Descripción *</Label>
-                  <Textarea placeholder="Descripción de la práctica..." rows={2} value={newOferta.descripcion} onChange={(e) => setNewOferta({ ...newOferta, descripcion: e.target.value })} className="resize-none" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold">✅ Requisitos *</Label>
-                  <Textarea placeholder="Requisitos del puesto..." rows={2} value={newOferta.requisitos} onChange={(e) => setNewOferta({ ...newOferta, requisitos: e.target.value })} className="resize-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold">📅 Fecha Límite *</Label>
-                    <Input type="date" value={newOferta.fecha_limite_postulacion} onChange={(e) => setNewOferta({ ...newOferta, fecha_limite_postulacion: e.target.value })} className="h-9" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold">👥 Vacantes *</Label>
-                    <Input type="number" min="1" value={newOferta.vacantes} onChange={(e) => setNewOferta({ ...newOferta, vacantes: parseInt(e.target.value) })} className="h-9" />
-                  </div>
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)} className="flex-1 h-9">
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleCreateOferta} className="flex-1 h-9 bg-blue-600">
-                    Publicar Oferta
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

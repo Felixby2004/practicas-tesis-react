@@ -18,12 +18,15 @@ export default function StudentInternshipsPage() {
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showPostularDialog, setShowPostularDialog] = useState(false);
+  const [showOfertaDialog, setShowOfertaDialog] = useState(false);
   const [selectedOfertaId, setSelectedOfertaId] = useState('');
+  const [selectedOferta, setSelectedOferta] = useState<any>(null);
   const [curriculumUrl, setCurriculumUrl] = useState('');
   const [showHorasDialog, setShowHorasDialog] = useState(false);
   const [showInformeDialog, setShowInformeDialog] = useState(false);
   const [horasData, setHorasData] = useState({ horas_trabajadas: 0, descripcion_actividad: '' });
-  const [informeData, setInformeData] = useState({ tipo: 'inicial', titulo: '', contenido: '' });
+  const [informeData, setInformeData] = useState({ tipo: 'inicial', titulo: '', contenido: '', archivo_url: '' });
+  const [isLoadingConvenios, setIsLoadingConvenios] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -35,6 +38,7 @@ export default function StudentInternshipsPage() {
   const estudianteId = user?.estudiante?.id;
   
   const { data: ofertas = [], refetch: refetchOfertas } = trpc.internships.getOfertas.useQuery();
+  const { data: empresas = [] } = trpc.companies.getEmpresas.useQuery();
   const { data: misPostulaciones, refetch: refetchPostulaciones } = trpc.internships.getPostulacionesByEstudiante.useQuery(
     { estudianteId: estudianteId || '' },
     { enabled: !!estudianteId }
@@ -58,6 +62,31 @@ export default function StudentInternshipsPage() {
   const yaPostulo = (ofertaId: string) => misPostulaciones?.some(p => p.oferta_id === ofertaId);
   const postulacionAprobada = misPostulaciones?.find(p => p.estado === 'aprobada');
   const formatDate = (date: string) => new Date(date).toLocaleDateString();
+
+  // Get company details with convenios
+  const getEmpresaConvenios = (empresaId?: string) => {
+    if (!empresaId) return null;
+    
+    // First try to get from empresas array
+    let empresa = (empresas as any[]).find(e => e.id === empresaId);
+    
+    // If not found, try to get from selectedOferta.empresa which might have full data
+    if (!empresa && selectedOferta?.empresa?.id === empresaId) {
+      empresa = selectedOferta.empresa;
+    }
+    
+    return empresa;
+  };
+
+  const handleVerOferta = (oferta: any) => {
+    // Refresh empresas data to ensure convenios are up to date
+    setIsLoadingConvenios(true);
+    refetchEmpresas().then(() => {
+      setSelectedOferta(oferta);
+      setShowOfertaDialog(true);
+      setIsLoadingConvenios(false);
+    });
+  };
 
   const filteredOfertas = (ofertas as any[]).filter(o => 
     o.activo !== false && (o.titulo?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -97,7 +126,8 @@ export default function StudentInternshipsPage() {
                     <TableCell>{o.empresa?.razon_social}</TableCell>
                     <TableCell>{formatDate(o.fecha_limite_postulacion)}</TableCell>
                     <TableCell>{o.vacantes}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right space-x-2">
+                      <Button size="sm" variant="ghost" onClick={() => handleVerOferta(o)}>Ver Detalles</Button>
                       {yaPostulo(o.id) ? (<Badge className="bg-green-500">Ya postulaste</Badge>) : (<Button size="sm" onClick={() => { setSelectedOfertaId(o.id); setShowPostularDialog(true); }}>Postular</Button>)}
                     </TableCell>
                   </TableRow>
@@ -111,7 +141,11 @@ export default function StudentInternshipsPage() {
           <Card><CardContent className="pt-6">
             <div className="space-y-3">
               {misPostulaciones?.map(p => (
-                <div key={p.id} className="flex justify-between items-center p-3 border rounded-lg">
+                <div 
+                  key={p.id} 
+                  className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                  onClick={() => handleVerOferta(p.oferta)}
+                >
                   <div>
                     <p className="font-medium">{p.oferta?.titulo}</p>
                     <p className="text-sm text-gray-500">{p.oferta?.empresa?.razon_social}</p>
@@ -198,15 +232,170 @@ export default function StudentInternshipsPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>Subir Informe</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <select className="w-full p-2 border rounded" value={informeData.tipo} onChange={(e) => setInformeData({ ...informeData, tipo: e.target.value as any })}>
-              <option value="inicial">Inicial</option>
-              <option value="intermedio">Intermedio</option>
-              <option value="final">Final</option>
-            </select>
-            <Input placeholder="Título" value={informeData.titulo} onChange={(e) => setInformeData({ ...informeData, titulo: e.target.value })} />
-            <Textarea placeholder="Contenido" rows={4} value={informeData.contenido} onChange={(e) => setInformeData({ ...informeData, contenido: e.target.value })} />
-            <Button onClick={() => crearInformeMutation.mutate({ postulacion_id: postulacionAprobada?.id, ...informeData as any })}>Enviar Informe</Button>
+            <div>
+              <Label>Tipo de Informe</Label>
+              <select className="w-full p-2 border rounded mt-1" value={informeData.tipo} onChange={(e) => setInformeData({ ...informeData, tipo: e.target.value as any })}>
+                <option value="inicial">Inicial</option>
+                <option value="intermedio">Intermedio</option>
+                <option value="final">Final</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="titulo">Título</Label>
+              <Input 
+                id="titulo"
+                placeholder="Ej: Informe de avance - Primera quincena" 
+                value={informeData.titulo} 
+                onChange={(e) => setInformeData({ ...informeData, titulo: e.target.value })} 
+              />
+            </div>
+            <div>
+              <Label htmlFor="contenido">Contenido / Resumen</Label>
+              <Textarea 
+                id="contenido"
+                placeholder="Describe el trabajo realizado..." 
+                rows={4} 
+                value={informeData.contenido} 
+                onChange={(e) => setInformeData({ ...informeData, contenido: e.target.value })} 
+              />
+            </div>
+            <div>
+              <Label htmlFor="drive-link">Link de Google Drive (opcional)</Label>
+              <Input 
+                id="drive-link"
+                placeholder="https://drive.google.com/file/d/..." 
+                value={informeData.archivo_url} 
+                onChange={(e) => setInformeData({ ...informeData, archivo_url: e.target.value })} 
+              />
+              <p className="text-xs text-gray-500 mt-1">Puedes compartir un documento o archivo de Google Drive con el link</p>
+            </div>
+            <Button onClick={() => crearInformeMutation.mutate({ postulacion_id: postulacionAprobada?.id, ...informeData as any })}>
+              Enviar Informe
+            </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para ver detalles de la oferta */}
+      <Dialog open={showOfertaDialog} onOpenChange={setShowOfertaDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Detalles de la Oferta</DialogTitle></DialogHeader>
+          {selectedOferta && (
+            <div className="space-y-4">
+              <div className="border-b pb-4">
+                <h3 className="font-bold text-lg mb-2">{selectedOferta.titulo}</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="font-semibold">Empresa:</p>
+                    <p>{selectedOferta.empresa?.razon_social}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">RUC:</p>
+                    <p>{selectedOferta.empresa?.ruc}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Ubicación:</p>
+                    <p>{selectedOferta.empresa?.direccion || 'No especificada'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Teléfono:</p>
+                    <p>{selectedOferta.empresa?.telefono || 'No especificado'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Email Contacto:</p>
+                    <p>{selectedOferta.empresa?.correo_contacto}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-b pb-4">
+                <h4 className="font-semibold mb-2">Detalles de la Práctica</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="font-semibold">Duración:</p>
+                    <p>{selectedOferta.duracion_semanas} semanas</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Fecha Límite:</p>
+                    <p>{formatDate(selectedOferta.fecha_limite_postulacion)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Vacantes:</p>
+                    <p className={selectedOferta.vacantes === 0 ? 'text-red-600 font-bold' : ''}>{selectedOferta.vacantes === 0 ? 'Sin vacantes' : selectedOferta.vacantes}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Estado:</p>
+                    <Badge className={selectedOferta.estado === 'abierta' ? 'bg-green-500' : 'bg-red-500'}>
+                      {selectedOferta.estado === 'abierta' ? 'Abierta' : 'Cerrada'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {selectedOferta.descripcion && (
+                <div className="border-b pb-4">
+                  <h4 className="font-semibold mb-2">Descripción</h4>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedOferta.descripcion}</p>
+                </div>
+              )}
+
+              {/* Convenios section */}
+              {(() => {
+                const empresaData = getEmpresaConvenios(selectedOferta.empresa?.id);
+                const conveniosActivos = empresaData?.convenios?.filter((c: any) => {
+                  const hoy = new Date();
+                  const inicio = new Date(c.fecha_inicio);
+                  const fin = new Date(c.fecha_fin);
+                  return inicio <= hoy && fin >= hoy;
+                }) || [];
+
+                return (
+                  <div className="border-b pb-4">
+                    <h4 className="font-semibold mb-2">Convenios Universitarios</h4>
+                    {isLoadingConvenios ? (
+                      <p className="text-sm text-gray-500">Cargando información de convenios...</p>
+                    ) : conveniosActivos.length > 0 ? (
+                      <div className="space-y-2">
+                        {conveniosActivos.map((c: any) => (
+                          <div key={c.id} className="bg-green-50 p-3 rounded-lg border border-green-200">
+                            <p className="text-sm font-semibold text-green-700">✓ Convenio {c.tipo} Vigente</p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              Válido desde {formatDate(c.fecha_inicio)} hasta {formatDate(c.fecha_fin)}
+                            </p>
+                            {c.archivo_url && (
+                              <a href={c.archivo_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">
+                                Ver documento →
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        No hay convenios activos registrados para esta empresa
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {selectedOferta.requisitos && (
+                <div className="pb-4">
+                  <h4 className="font-semibold mb-2">Requisitos</h4>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedOferta.requisitos}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setShowOfertaDialog(false)}>Cerrar</Button>
+                {selectedOferta.vacantes > 0 && !yaPostulo(selectedOferta.id) && (
+                  <Button onClick={() => { setShowOfertaDialog(false); setSelectedOfertaId(selectedOferta.id); setShowPostularDialog(true); }}>
+                    Postular
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

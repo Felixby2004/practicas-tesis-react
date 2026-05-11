@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmailService } from '../../services/email.service';
 import { CreateSolicitudDto, UpdateSolicitudDto } from './dto/solicitud.dto';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class RequestsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   async create(data: CreateSolicitudDto) {
     const existingUser = await this.prisma.usuario.findUnique({ where: { correo: data.correo } });
@@ -47,6 +51,26 @@ export class RequestsService {
     return solicitud;
   }
 
+  private generarContrasenaTemportal(): string {
+    const mayusculas = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const minusculas = 'abcdefghijklmnopqrstuvwxyz';
+    const numeros = '0123456789';
+    const especiales = '!@#$%';
+    
+    let contrasena = '';
+    contrasena += mayusculas.charAt(Math.floor(Math.random() * mayusculas.length));
+    contrasena += minusculas.charAt(Math.floor(Math.random() * minusculas.length));
+    contrasena += numeros.charAt(Math.floor(Math.random() * numeros.length));
+    contrasena += especiales.charAt(Math.floor(Math.random() * especiales.length));
+    
+    const todosLosCaracteres = mayusculas + minusculas + numeros + especiales;
+    for (let i = contrasena.length; i < 12; i++) {
+      contrasena += todosLosCaracteres.charAt(Math.floor(Math.random() * todosLosCaracteres.length));
+    }
+    
+    return contrasena.split('').sort(() => Math.random() - 0.5).join('');
+  }
+
   private generarCodigoEstudiante(nombreCompleto: string): string {
     const partes = nombreCompleto.trim().split(' ');
     let iniciales = '';
@@ -64,14 +88,18 @@ export class RequestsService {
     const updateData: any = { estado: data.estado, observaciones: data.observaciones, fecha_respuesta: new Date(), respondido_por: adminId };
 
     if (data.estado === 'aprobado') {
+      // Generar contraseña temporal nueva
+      const contrasenaTemportal = this.generarContrasenaTemportal();
+      const contrasenaHasheada = await bcrypt.hash(contrasenaTemportal, 10);
+
       const rol = await this.prisma.rol.findUnique({ where: { nombre: solicitud.rol_solicitado } });
       if (!rol) throw new NotFoundException(`Rol ${solicitud.rol_solicitado} no encontrado`);
 
-      // 1. Crear usuario
+      // 1. Crear usuario con la contraseña temporal
       const usuario = await this.prisma.usuario.create({
         data: {
           correo: solicitud.correo,
-          contrasena: solicitud.contrasena,
+          contrasena: contrasenaHasheada,
           nombre_completo: solicitud.nombre_completo,
           rol_id: rol.id,
         },
@@ -81,40 +109,58 @@ export class RequestsService {
       // 2. Crear registro específico según el rol
       if (solicitud.rol_solicitado === 'ESTUDIANTE') {
         const codigoUniv = this.generarCodigoEstudiante(solicitud.nombre_completo);
-        const estudiante = await this.prisma.estudiante.create({
+        await this.prisma.estudiante.create({
           data: {
             usuario_id: usuario.id,
             codigo_univ: codigoUniv,
             carrera_id: solicitud.carrera_id || '',
             ciclo: solicitud.ciclo || 1,
+            expediente_url: null,
             activo: true,
           },
         });
-        console.log(`✅ Estudiante creado: ${estudiante.codigo_univ}`);
       } 
       else if (solicitud.rol_solicitado === 'DOCENTE') {
-        const docente = await this.prisma.docente.create({
+        let facultadNombre = solicitud.facultad || '';
+
+        if (solicitud.facultad_id && !facultadNombre) {
+          const facultad = await this.prisma.facultad.findUnique({
+            where: { id: solicitud.facultad_id },
+          });
+          if (facultad) {
+            facultadNombre = facultad.nombre;
+          }
+        }
+
+        if (solicitud.facultad) {
+          const facultad = await this.prisma.facultad.findFirst({
+            where: { nombre: solicitud.facultad },
+          });
+          if (facultad) {
+            facultadNombre = facultad.nombre;
+          }
+        }
+
+        await this.prisma.docente.create({
           data: {
             usuario_id: usuario.id,
             especialidad: solicitud.especialidad || '',
-            facultad: solicitud.facultad_id || '',
+            facultad: facultadNombre,
             activo: true,
           },
         });
-        console.log(`✅ Docente creado: ${docente.id}`);
-      } 
+      }
       else if (solicitud.rol_solicitado === 'COORDINADOR') {
-        const coordinador = await this.prisma.coordinador.create({
+        await this.prisma.coordinador.create({
           data: {
             usuario_id: usuario.id,
             facultad_id: solicitud.facultad_id || '',
             activo: true,
           },
         });
-        console.log(`✅ Coordinador creado para facultad: ${coordinador.facultad_id}`);
       } 
       else if (solicitud.rol_solicitado === 'REPRESENTANTE_EMPRESA') {
-        const representante = await this.prisma.representanteEmpresa.create({
+        await this.prisma.representanteEmpresa.create({
           data: {
             usuario_id: usuario.id,
             empresa_id: solicitud.empresa_id || '',
@@ -122,8 +168,24 @@ export class RequestsService {
             activo: true,
           },
         });
-        console.log(`✅ Representante creado para empresa: ${representante.empresa_id}`);
       }
+
+      // 3. Enviar correo de aprobación con contraseña temporal
+      await this.emailService.sendRegistrationApprovalEmail(
+        solicitud.correo,
+        solicitud.nombre_completo,
+        solicitud.rol_solicitado,
+        contrasenaTemportal
+      );
+    }
+    
+    if (data.estado === 'rechazado') {
+      // Enviar correo de rechazo
+      await this.emailService.sendRegistrationRejectionEmail(
+        solicitud.correo,
+        solicitud.nombre_completo,
+        data.observaciones
+      );
     }
 
     return this.prisma.solicitudRegistro.update({ where: { id }, data: updateData });

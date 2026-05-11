@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -48,8 +48,29 @@ export default function CompaniesPage() {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.rol === 'ADMINISTRADOR' || user.rol === 'COORDINADOR';
+  const isRepresentante = user.rol === 'REPRESENTANTE_EMPRESA';
+  const isEstudiante = user.rol === 'ESTUDIANTE';
 
   const { data: empresas = [], refetch, isLoading } = trpc.companies.getEmpresas.useQuery();
+
+  // Filtrar empresas según el rol
+  const empresasFiltradas = () => {
+    if (isRepresentante && user.representante?.empresa_id) {
+      // Representante solo ve su empresa
+      return (empresas as Company[]).filter(e => e.id === user.representante.empresa_id);
+    }
+    return empresas as Company[];
+  };
+
+  // Obtener la empresa del representante para mostrar convenios
+  useEffect(() => {
+    if (isRepresentante && user.representante?.empresa_id && empresas.length > 0) {
+      const miEmpresa = (empresas as Company[]).find(e => e.id === user.representante.empresa_id);
+      if (miEmpresa && !selectedCompany) {
+        setSelectedCompany(miEmpresa);
+      }
+    }
+  }, [empresas, isRepresentante, user.representante?.empresa_id]);
 
   const createCompanyMutation = trpc.companies.createEmpresa.useMutation({
     onSuccess: () => { toast.success('Empresa creada'); setShowCreateDialog(false); refetch(); setNewCompany({ ruc: '', razon_social: '', direccion: '', telefono: '', correo_contacto: '' }); },
@@ -67,7 +88,20 @@ export default function CompaniesPage() {
   });
 
   const addConvenioMutation = trpc.companies.addConvenio.useMutation({
-    onSuccess: () => { toast.success('Convenio añadido'); setShowConvenioDialog(false); refetch(); setNewConvenio({ tipo: 'Marco', fecha_inicio: '', fecha_fin: '', archivo_url: '' }); },
+    onSuccess: () => { 
+      toast.success('Convenio añadido'); 
+      refetch().then(() => {
+        // Update selectedCompany with fresh data
+        if (selectedCompanyId) {
+          const updatedCompany = empresas.find((e: any) => e.id === selectedCompanyId);
+          if (updatedCompany) {
+            setSelectedCompany(updatedCompany);
+          }
+        }
+      });
+      setShowConvenioDialog(false); 
+      setNewConvenio({ tipo: 'Marco', fecha_inicio: '', fecha_fin: '', archivo_url: '' }); 
+    },
     onError: (error) => toast.error(error.message),
   });
 
@@ -114,7 +148,14 @@ export default function CompaniesPage() {
     return <Badge variant="destructive">Vencido</Badge>;
   };
 
-  const filteredCompanies = (empresas as Company[]).filter(e => e.razon_social?.toLowerCase().includes(searchTerm.toLowerCase()) || e.ruc?.includes(searchTerm));
+  const empresasMostradas = empresasFiltradas();
+  const filteredCompanies = empresasMostradas.filter(e => 
+    e.razon_social?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    e.ruc?.includes(searchTerm)
+  );
+
+  // Para representante y estudiante, mostrar botón para ver convenios aunque no tengan permisos de edición
+  const puedeEditar = isAdmin;
 
   return (
     <div className="space-y-6">
@@ -139,8 +180,8 @@ export default function CompaniesPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><p className="text-sm">Total Empresas</p><p className="text-2xl font-bold">{empresas.length}</p></CardContent></Card>
-        <Card><CardContent className="pt-6"><p className="text-sm">Convenios Activos</p><p className="text-2xl font-bold text-green-600">{empresas.reduce((t, e) => t + (e.convenios?.filter(c => new Date(c.fecha_inicio) <= new Date() && new Date(c.fecha_fin) >= new Date()).length || 0), 0)}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm">Total Empresas</p><p className="text-2xl font-bold">{empresasMostradas.length}</p></CardContent></Card>
+        <Card><CardContent className="pt-6"><p className="text-sm">Convenios Activos</p><p className="text-2xl font-bold text-green-600">{empresasMostradas.reduce((t, e) => t + (e.convenios?.filter(c => new Date(c.fecha_inicio) <= new Date() && new Date(c.fecha_fin) >= new Date()).length || 0), 0)}</p></CardContent></Card>
         <Card><CardContent className="pt-6"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" /><Input placeholder="Buscar..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></CardContent></Card>
       </div>
 
@@ -148,103 +189,90 @@ export default function CompaniesPage() {
         <Table>
           <TableHeader><TableRow><TableHead>RUC</TableHead><TableHead>Razón Social</TableHead><TableHead>Contacto</TableHead><TableHead>Convenio</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
           <TableBody>
-            {filteredCompanies.map((company) => (
-              <TableRow key={company.id}>
-                <TableCell>{company.ruc}</TableCell>
-                <TableCell className="font-medium">{company.razon_social}</TableCell>
-                <TableCell><div>{company.correo_contacto}</div><div className="text-xs text-gray-500">{company.telefono}</div></TableCell>
-                <TableCell>{company.convenios?.some(c => new Date(c.fecha_inicio) <= new Date() && new Date(c.fecha_fin) >= new Date()) ? <Badge className="bg-green-500">Vigente</Badge> : company.convenios?.length > 0 ? <Badge variant="secondary">Vencido</Badge> : <Badge variant="outline">Sin Convenio</Badge>}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => { setSelectedCompany(company); setShowConveniosModal(true); }}><Eye className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditCompany({ id: company.id, ruc: company.ruc, razon_social: company.razon_social, direccion: company.direccion || '', telefono: company.telefono || '', correo_contacto: company.correo_contacto || '' }); setShowEditDialog(true); }}><Edit className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteCompany(company)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {filteredCompanies.map((company) => {
+              const tieneConvenioActivo = company.convenios?.some(c => new Date(c.fecha_inicio) <= new Date() && new Date(c.fecha_fin) >= new Date());
+              return (
+                <TableRow key={company.id}>
+                  <TableCell className="font-mono text-sm">{company.ruc}</TableCell>
+                  <TableCell className="font-medium">{company.razon_social}</TableCell>
+                  <TableCell>
+                    <div className="text-sm">{company.correo_contacto}</div>
+                    <div className="text-xs text-gray-500">{company.telefono}</div>
+                  </TableCell>
+                  <TableCell>
+                    {tieneConvenioActivo ? (
+                      <Badge className="bg-green-500">✓ Activo</Badge>
+                    ) : company.convenios && company.convenios.length > 0 ? (
+                      <Badge variant="secondary">Vencido</Badge>
+                    ) : (
+                      <Badge variant="outline">Sin Convenio</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => { 
+                        refetch().then(() => {
+                          const updated = (empresas as Company[]).find(e => e.id === company.id);
+                          setSelectedCompany(updated || company);
+                          setShowConveniosModal(true);
+                        });
+                      }} title="Ver convenios">
+                        <FileSignature className="h-4 w-4" />
+                      </Button>
+                      {puedeEditar && (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditCompany({ id: company.id, ruc: company.ruc, razon_social: company.razon_social, direccion: company.direccion || '', telefono: company.telefono || '', correo_contacto: company.correo_contacto || '' }); setShowEditDialog(true); }}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteCompany(company)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent></Card>
 
-      {/* Modal Editar Empresa */}
+      {/* Modal Editar Empresa (igual) */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">✏️ Editar Empresa</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-xl font-bold">✏️ Editar Empresa</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">📋 RUC *</Label>
-              <Input 
-                placeholder="12345678901" 
-                value={editCompany.ruc} 
-                onChange={(e) => setEditCompany({ ...editCompany, ruc: e.target.value })} 
-                maxLength={11}
-              />
-              <p className="text-xs text-gray-500">Número de RUC de la empresa (11 dígitos)</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">🏢 Razón Social *</Label>
-              <Input 
-                placeholder="Nombre de la empresa" 
-                value={editCompany.razon_social} 
-                onChange={(e) => setEditCompany({ ...editCompany, razon_social: e.target.value })} 
-              />
-              <p className="text-xs text-gray-500">Nombre o razón social de la empresa</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">📍 Dirección</Label>
-              <Input 
-                placeholder="Dirección completa" 
-                value={editCompany.direccion} 
-                onChange={(e) => setEditCompany({ ...editCompany, direccion: e.target.value })} 
-              />
-              <p className="text-xs text-gray-500">Ubicación de la empresa (opcional)</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">📞 Teléfono</Label>
-              <Input 
-                placeholder="(01) 123-4567" 
-                value={editCompany.telefono} 
-                onChange={(e) => setEditCompany({ ...editCompany, telefono: e.target.value })} 
-              />
-              <p className="text-xs text-gray-500">Número de contacto (opcional)</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">✉️ Email de Contacto *</Label>
-              <Input 
-                type="email"
-                placeholder="contacto@empresa.com" 
-                value={editCompany.correo_contacto} 
-                onChange={(e) => setEditCompany({ ...editCompany, correo_contacto: e.target.value })} 
-              />
-              <p className="text-xs text-gray-500">Correo electrónico de contacto</p>
-            </div>
-            <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={() => setShowEditDialog(false)} className="flex-1">
-                Cancelar
-              </Button>
-              <Button onClick={handleUpdateCompany} className="flex-1 bg-blue-600">
-                💾 Guardar Cambios
-              </Button>
-            </div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">📋 RUC *</Label><Input placeholder="12345678901" value={editCompany.ruc} onChange={(e) => setEditCompany({ ...editCompany, ruc: e.target.value })} maxLength={11}/><p className="text-xs text-gray-500">Número de RUC de la empresa (11 dígitos)</p></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">🏢 Razón Social *</Label><Input placeholder="Nombre de la empresa" value={editCompany.razon_social} onChange={(e) => setEditCompany({ ...editCompany, razon_social: e.target.value })}/><p className="text-xs text-gray-500">Nombre o razón social de la empresa</p></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">📍 Dirección</Label><Input placeholder="Dirección completa" value={editCompany.direccion} onChange={(e) => setEditCompany({ ...editCompany, direccion: e.target.value })}/><p className="text-xs text-gray-500">Ubicación de la empresa (opcional)</p></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">📞 Teléfono</Label><Input placeholder="(01) 123-4567" value={editCompany.telefono} onChange={(e) => setEditCompany({ ...editCompany, telefono: e.target.value })}/><p className="text-xs text-gray-500">Número de contacto (opcional)</p></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">✉️ Email de Contacto *</Label><Input type="email" placeholder="contacto@empresa.com" value={editCompany.correo_contacto} onChange={(e) => setEditCompany({ ...editCompany, correo_contacto: e.target.value })}/><p className="text-xs text-gray-500">Correo electrónico de contacto</p></div>
+            <div className="flex gap-3 pt-4"><Button variant="outline" onClick={() => setShowEditDialog(false)} className="flex-1">Cancelar</Button><Button onClick={handleUpdateCompany} className="flex-1 bg-blue-600">💾 Guardar Cambios</Button></div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Convenios */}
+      {/* Modal Convenios - Ahora accesible para todos los roles */}
       <Dialog open={showConveniosModal} onOpenChange={setShowConveniosModal}>
         <DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Convenios - {selectedCompany?.razon_social}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {selectedCompany?.convenios?.length ? selectedCompany.convenios.map((c) => (
-              <div key={c.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start"><div className="flex items-center gap-2"><FileSignature className="h-4 w-4" /><span className="font-semibold">{c.tipo}</span></div>{getEstadoBadge(c.estado, c.fecha_inicio, c.fecha_fin)}</div>
-                <div className="grid grid-cols-2 gap-4 text-sm mt-2"><div><p className="text-gray-500">Inicio</p><p>{formatDate(c.fecha_inicio)}</p></div><div><p className="text-gray-500">Fin</p><p>{formatDate(c.fecha_fin)}</p></div></div>
-                {c.archivo_url && <div className="mt-2"><a href={c.archivo_url} target="_blank" className="text-blue-600 text-sm">Ver Documento</a></div>}
-              </div>
-            )) : <p className="text-center text-gray-500">No hay convenios</p>}
-            {isAdmin && <Button onClick={() => { setSelectedCompanyId(selectedCompany?.id || null); setShowConveniosModal(false); setShowConvenioDialog(true); }} className="w-full"><Plus className="h-4 w-4 mr-2" />Agregar Convenio</Button>}
+            {selectedCompany?.convenios && selectedCompany.convenios.length > 0 ? (
+              selectedCompany.convenios.map((c) => (
+                <div key={c.id} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start"><div className="flex items-center gap-2"><FileSignature className="h-4 w-4" /><span className="font-semibold">{c.tipo}</span></div>{getEstadoBadge(c.estado, c.fecha_inicio, c.fecha_fin)}</div>
+                  <div className="grid grid-cols-2 gap-4 text-sm mt-2"><div><p className="text-gray-500">Inicio</p><p>{formatDate(c.fecha_inicio)}</p></div><div><p className="text-gray-500">Fin</p><p>{formatDate(c.fecha_fin)}</p></div></div>
+                  {c.archivo_url && <div className="mt-2"><a href={c.archivo_url} target="_blank" className="text-blue-600 text-sm">Ver Documento</a></div>}
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-gray-500 py-4">No hay convenios registrados para esta empresa</p>
+            )}
+            {isAdmin && selectedCompany && (
+              <Button onClick={() => { setSelectedCompanyId(selectedCompany.id); setShowConveniosModal(false); setShowConvenioDialog(true); }} className="w-full">
+                <Plus className="h-4 w-4 mr-2" />Agregar Convenio
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -252,69 +280,16 @@ export default function CompaniesPage() {
       {/* Modal Agregar Convenio */}
       <Dialog open={showConvenioDialog} onOpenChange={setShowConvenioDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">📄 Registrar Nuevo Convenio</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-xl font-bold">📄 Registrar Nuevo Convenio</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">📌 Tipo de Convenio *</Label>
-              <div className="flex gap-4">
-                <Button 
-                  variant={newConvenio.tipo === 'Marco' ? 'default' : 'outline'} 
-                  onClick={() => setNewConvenio({ ...newConvenio, tipo: 'Marco' })} 
-                  className="flex-1"
-                >
-                  📋 Marco
-                </Button>
-                <Button 
-                  variant={newConvenio.tipo === 'Especifico' ? 'default' : 'outline'} 
-                  onClick={() => setNewConvenio({ ...newConvenio, tipo: 'Especifico' })} 
-                  className="flex-1"
-                >
-                  📝 Específico
-                </Button>
-              </div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">📌 Tipo de Convenio *</Label>
+              <div className="flex gap-4"><Button variant={newConvenio.tipo === 'Marco' ? 'default' : 'outline'} onClick={() => setNewConvenio({ ...newConvenio, tipo: 'Marco' })} className="flex-1">📋 Marco</Button><Button variant={newConvenio.tipo === 'Especifico' ? 'default' : 'outline'} onClick={() => setNewConvenio({ ...newConvenio, tipo: 'Especifico' })} className="flex-1">📝 Específico</Button></div>
               <p className="text-xs text-gray-500">Seleccione el tipo de convenio</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">📅 Fecha de Inicio *</Label>
-                <Input 
-                  type="date" 
-                  value={newConvenio.fecha_inicio} 
-                  onChange={(e) => setNewConvenio({ ...newConvenio, fecha_inicio: e.target.value })} 
-                />
-                <p className="text-xs text-gray-500">Día en que inicia el convenio</p>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">📅 Fecha de Fin *</Label>
-                <Input 
-                  type="date" 
-                  value={newConvenio.fecha_fin} 
-                  onChange={(e) => setNewConvenio({ ...newConvenio, fecha_fin: e.target.value })} 
-                />
-                <p className="text-xs text-gray-500">Día en que finaliza el convenio</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">🔗 URL del Documento</Label>
-              <div className="flex items-center gap-2">
-                <LinkIcon className="h-4 w-4 text-gray-400" />
-                <Input 
-                  type="url"
-                  value={newConvenio.archivo_url}
-                  onChange={(e) => setNewConvenio({ ...newConvenio, archivo_url: e.target.value })}
-                  placeholder="https://drive.google.com/file/d/... (opcional)"
-                />
-              </div>
-              <p className="text-xs text-gray-500">Enlace al documento del convenio (Google Drive, Dropbox, etc.)</p>
-            </div>
-
-            <Button onClick={handleAddConvenio} disabled={addConvenioMutation.isPending} className="w-full bg-blue-600">
-              {addConvenioMutation.isPending ? 'Guardando...' : '✅ Registrar Convenio'}
-            </Button>
+            <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label className="text-sm font-semibold">📅 Fecha de Inicio *</Label><Input type="date" value={newConvenio.fecha_inicio} onChange={(e) => setNewConvenio({ ...newConvenio, fecha_inicio: e.target.value })} /><p className="text-xs text-gray-500">Día en que inicia el convenio</p></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">📅 Fecha de Fin *</Label><Input type="date" value={newConvenio.fecha_fin} onChange={(e) => setNewConvenio({ ...newConvenio, fecha_fin: e.target.value })} /><p className="text-xs text-gray-500">Día en que finaliza el convenio</p></div></div>
+            <div className="space-y-2"><Label className="text-sm font-semibold">🔗 URL del Documento</Label><div className="flex items-center gap-2"><LinkIcon className="h-4 w-4 text-gray-400" /><Input type="url" value={newConvenio.archivo_url} onChange={(e) => setNewConvenio({ ...newConvenio, archivo_url: e.target.value })} placeholder="https://drive.google.com/file/d/... (opcional)" /></div><p className="text-xs text-gray-500">Enlace al documento del convenio (Google Drive, Dropbox, etc.)</p></div>
+            <Button onClick={handleAddConvenio} disabled={addConvenioMutation.isPending} className="w-full bg-blue-600">{addConvenioMutation.isPending ? 'Guardando...' : '✅ Registrar Convenio'}</Button>
           </div>
         </DialogContent>
       </Dialog>

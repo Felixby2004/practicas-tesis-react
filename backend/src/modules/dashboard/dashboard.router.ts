@@ -35,6 +35,14 @@ export class DashboardRouter {
         return result;
       }),
 
+    getEstadisticasPracticas: this.trpcService.procedure
+      .query(async () => {
+        console.log('getEstadisticasPracticas llamado');
+        const result = await this.dashboardService.getEstadisticasPracticas();
+        console.log('getEstadisticasPracticas resultado:', result);
+        return result;
+      }),
+
     getActividadReciente: this.trpcService.procedure
       .input(z.object({ limite: z.number().default(10) }))
       .query(async ({ input }) => {

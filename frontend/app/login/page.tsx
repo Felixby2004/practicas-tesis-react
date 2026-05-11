@@ -22,7 +22,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/auth/login`, {
+      const response = await fetch('http://localhost:4000/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -40,6 +40,12 @@ export default function LoginPage() {
         
         if (data.usuario.rol === 'ESTUDIANTE') {
           router.push('/student');
+        } else if (data.usuario.rol === 'COORDINADOR') {
+          router.push('/dashboard/coordinator');
+        } else if (data.usuario.rol === 'DOCENTE') {
+          router.push('/dashboard/teacher');
+        } else if (data.usuario.rol === 'REPRESENTANTE_EMPRESA') {
+          router.push('/dashboard/company');
         } else {
           router.push('/dashboard');
         }
@@ -55,18 +61,18 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold text-gray-800 dark:text-white">Iniciar Sesión</CardTitle>
-          <CardDescription className="text-gray-500 dark:text-gray-400">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl text-center">Iniciar Sesión</CardTitle>
+          <CardDescription className="text-center">
             Universidad Nacional de Trujillo
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="correo" className="text-gray-700 dark:text-gray-300">Correo Electrónico</Label>
+              <Label htmlFor="correo">Correo Electrónico</Label>
               <Input
                 id="correo"
                 type="email"
@@ -74,37 +80,30 @@ export default function LoginPage() {
                 value={formData.correo}
                 onChange={(e) => setFormData({ ...formData, correo: e.target.value })}
                 required
-                className="focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contrasena" className="text-gray-700 dark:text-gray-300">Contraseña</Label>
+              <Label htmlFor="contrasena">Contraseña</Label>
               <Input
                 id="contrasena"
                 type="password"
-                placeholder="••••••"
                 value={formData.contrasena}
                 onChange={(e) => setFormData({ ...formData, contrasena: e.target.value })}
                 required
-                className="focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button 
-              type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 transition-colors"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Iniciando...' : 'Iniciar Sesión'}
             </Button>
-            <p className="text-sm text-center text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-center text-gray-600">
               ¿No tienes cuenta?{' '}
-              <Link href="/register" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium">
+              <Link href="/register" className="text-blue-600 hover:underline">
                 Regístrate aquí
               </Link>
             </p>
-            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-center text-gray-500">
               Demo: admin@unt.edu.pe / admin123
             </p>
           </CardFooter>

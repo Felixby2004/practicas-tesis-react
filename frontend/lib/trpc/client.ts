@@ -1,8 +1,4 @@
 import { createTRPCReact } from '@trpc/react-query';
 
-// Declaración de tipo para evitar errores
-type AnyRouter = {
-  [key: string]: any;
-};
-
+// Usar cualquier tipo temporalmente - el router será validado en tiempo de ejecución
 export const trpc = createTRPCReact<any>();

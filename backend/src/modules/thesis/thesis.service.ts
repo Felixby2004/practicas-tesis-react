@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+
 
 @Injectable()
 export class ThesisService {
@@ -34,6 +35,45 @@ export class ThesisService {
   }
 
   async create(data: any) {
+    const estudiante = await this.prisma.estudiante.findUnique({
+      where: { id: data.estudiante_id },
+      include: {
+        postulaciones: {
+          where: { estado: 'aprobada' },
+          include: { horas: true, informes: true },
+        },
+      },
+    });
+
+    if (!estudiante) {
+      throw new NotFoundException('Estudiante no encontrado');
+    }
+
+    const horasTotales = (estudiante.postulaciones || [])
+      .flatMap((p: any) => p.horas || [])
+      .reduce((acc: number, h: any) => acc + h.horas_trabajadas, 0);
+
+    const tieneInformeFinalAprobado = (estudiante.postulaciones || []).some((p: any) =>
+      (p.informes || []).some((i: any) => i.tipo === 'final' && i.estado === 'revisado')
+    );
+
+    if (horasTotales < 240) {
+      throw new BadRequestException(
+        `Debes completar 240 horas de práctica antes de registrar una tesis. Tienes ${horasTotales} horas registradas.`
+      );
+    }
+
+    if (!tieneInformeFinalAprobado) {
+      throw new BadRequestException(
+        'Debes presentar y aprobar el informe final de prácticas antes de registrar una tesis.'
+      );
+    }
+
+    await this.prisma.estudiante.update({
+      where: { id: data.estudiante_id },
+      data: { practicas_completadas: true },
+    });
+
     return this.prisma.proyectoTesis.create({
       data: {
         titulo: data.titulo,

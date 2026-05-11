@@ -12,10 +12,10 @@ import { TrpcModule } from '../../trpc/trpc.module';
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secret-key-change-in-production',
+      secret: process.env.JWT_SECRET || 'secret-key',
       signOptions: { expiresIn: '7d' },
     }),
-    forwardRef(() => TrpcModule), // Usa forwardRef
+    forwardRef(() => TrpcModule),
   ],
   controllers: [AuthController],
   providers: [AuthService, AuthRouter, JwtStrategy, PrismaService],

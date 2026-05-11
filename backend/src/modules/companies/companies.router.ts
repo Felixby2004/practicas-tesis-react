@@ -58,5 +58,27 @@ export class CompaniesRouter {
       .query(async ({ input }) => {
         return this.companiesService.getConvenios(input.empresaId);
       }),
+
+    assignRepresentative: this.trpcService.procedure
+      .input(z.object({
+        usuarioId: z.string().uuid(),
+        empresaId: z.string().uuid(),
+        cargo: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return this.companiesService.assignRepresentative(
+          input.usuarioId,
+          input.empresaId,
+          input.cargo
+        );
+      }),
+
+    getMyCompany: this.trpcService.procedure
+      .query(async ({ ctx }) => {
+        if (!ctx.user?.id) {
+          return null;
+        }
+        return this.companiesService.getCompanyByRepresentativeId(ctx.user.id);
+      }),
   });
 }

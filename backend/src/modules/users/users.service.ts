@@ -13,18 +13,11 @@ export class UsersService {
           include: { usuario: true, carrera: true },
         });
       case 'DOCENTE':
-        const docentes = await this.prisma.docente.findMany({
+        // El campo facultad ya es un string, no necesita mapeo
+        return this.prisma.docente.findMany({
           where: { activo: true },
           include: { usuario: true },
         });
-        // Obtener nombres de facultades
-        const facultades = await this.prisma.facultad.findMany();
-        const facultadMap = new Map(facultades.map(f => [f.id, f.nombre]));
-        
-        return docentes.map(d => ({
-          ...d,
-          facultad_nombre: d.facultad ? (facultadMap.get(d.facultad) || d.facultad) : 'Sin facultad'
-        }));
       case 'COORDINADOR':
         return this.prisma.coordinador.findMany({
           where: { activo: true },
@@ -110,7 +103,7 @@ export class UsersService {
           data: {
             carrera_id: data.carrera_id,
             ciclo: data.ciclo,
-            expediente: data.expediente,
+            expediente_url: data.expediente_url,
           },
         });
       case 'DOCENTE':

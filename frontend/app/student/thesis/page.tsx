@@ -18,8 +18,38 @@ export default function StudentThesisPage() {
     }
   }, []);
 
+  const { data: perfil } = trpc.profile.getPerfil.useQuery();
+  const { data: estadisticas } = trpc.profile.getEstadisticas.useQuery();
   const { data: misTesis, isLoading } = trpc.thesis.getProyectos.useQuery();
+
+  // Filtrar tesis del estudiante actual
   const tesisDelEstudiante = misTesis?.filter((t: any) => t.estudiante?.usuario?.id === user?.id);
+
+  // Mostrar advertencia si no ha completado prácticas (menos de 240 horas)
+  const horasCompletadas = (estadisticas?.horas_totales || 0) >= 240;
+  
+  if (!horasCompletadas) {
+    return (
+      <Card>
+        <CardContent className="text-center py-12">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+              ⚠️ Requisito no cumplido
+            </h3>
+            <p className="text-yellow-700">
+              Para registrar un proyecto de tesis, debes completar primero tus prácticas preprofesionales.
+            </p>
+            <p className="text-sm text-yellow-600 mt-2">
+              Horas registradas: {estadisticas?.horas_totales || 0} / 240
+            </p>
+            <Link href="/student/internships">
+              <Button className="mt-4">Ir a Mis Prácticas</Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const formatDate = (date: string) => new Date(date).toLocaleDateString();
 

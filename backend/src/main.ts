@@ -1,30 +1,44 @@
-import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { TrpcRouter } from './trpc/trpc.router';
+import { ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import * as trpcExpress from '@trpc/server/adapters/express';
-import { createContext } from './trpc/contexts/auth.context';
+import { TrpcRouter } from './trpc/trpc.router';
+import { createTrpcContext } from './trpc/contexts/auth.context';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  app.enableCors();
-  app.useGlobalPipes(new ValidationPipe());
-
   const trpcRouter = app.get(TrpcRouter);
   
-  app.use(
-    '/trpc',
-    trpcExpress.createExpressMiddleware({
-      router: trpcRouter.appRouter,
-      createContext,
-    }),
-  );
-
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`tRPC endpoint is running on: http://localhost:${port}/trpc`);
+  // Habilitar CORS
+  app.enableCors({
+    origin: 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
+  
+  app.use(helmet());
+  app.use(cookieParser());
+  
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }));
+  
+  // app.setGlobalPrefix('api');
+  
+  // Configurar tRPC
+  app.use('/trpc', trpcExpress.createExpressMiddleware({
+    router: trpcRouter.appRouter,
+    createContext: createTrpcContext,
+  }));
+  
+  const port = process.env.PORT || 4000;
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Servidor corriendo en http://localhost:${port}`);
+  console.log(`📍 CORS habilitado para http://localhost:3000`);
 }
 bootstrap();

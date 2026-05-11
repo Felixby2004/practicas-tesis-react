@@ -204,10 +204,10 @@ export default function ReportsPage() {
   };
 
   const reportOptions = [
-    { value: 'gestion', label: '📊 Reporte de Gestión', icon: TrendingUp, desc: 'Métricas generales del sistema' },
-    { value: 'practicas', label: '💼 Reporte de Prácticas', icon: Briefcase, desc: 'Ofertas de práctica y postulaciones' },
-    { value: 'tesis', label: '📚 Reporte de Tesis', icon: GraduationCap, desc: 'Proyectos de tesis' },
-    { value: 'empresas', label: '🏢 Reporte de Empresas', icon: Building2, desc: 'Empresas y convenios' },
+    { value: 'gestion', label: 'Reporte de Gestión', icon: TrendingUp, desc: 'Métricas generales del sistema' },
+    { value: 'practicas', label: 'Reporte de Prácticas', icon: Briefcase, desc: 'Ofertas de práctica y postulaciones' },
+    { value: 'tesis', label: 'Reporte de Tesis', icon: GraduationCap, desc: 'Proyectos de tesis' },
+    { value: 'empresas', label: ' Reporte de Empresas', icon: Building2, desc: 'Empresas y convenios' },
   ];
 
   // Obtener datos para vista previa

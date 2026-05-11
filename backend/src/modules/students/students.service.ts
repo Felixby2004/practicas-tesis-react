@@ -31,7 +31,7 @@ export class StudentsService {
         codigo_univ: data.codigo_univ,
         carrera_id: data.carrera_id,
         ciclo: data.ciclo,
-        expediente: data.expediente,
+        expediente_url: data.expediente_url,
         activo: true,
       },
       include: {
@@ -184,7 +184,7 @@ export class StudentsService {
         codigo_univ: data.codigo_univ,
         carrera_id: data.carrera_id,
         ciclo: data.ciclo,
-        expediente: data.expediente,
+        expediente_url: data.expediente_url,
       },
       include: {
         usuario: {
@@ -244,7 +244,7 @@ export class StudentsService {
     });
   }
 
-  // Obtener estadísticas de estudiantes
+  // Agregar tipos en los métodos que tienen map
   async getEstadisticas() {
     const [totalEstudiantes, estudiantesActivos, porCarrera, porCiclo] = await Promise.all([
       this.prisma.estudiante.count(),
@@ -259,19 +259,107 @@ export class StudentsService {
       }),
     ]);
 
-    // Obtener nombres de carreras para los resultados
     const carreras = await this.prisma.carrera.findMany();
-    const carrerasMap = new Map(carreras.map(c => [c.id, c.nombre]));
+    const carrerasMap = new Map(carreras.map((c: { id: string; nombre: string }) => [c.id, c.nombre]));
 
     return {
       totalEstudiantes,
       estudiantesActivos,
-      porCarrera: porCarrera.map(c => ({ 
+      porCarrera: porCarrera.map((c: { carrera_id: string; _count: number }) => ({
         carrera_id: c.carrera_id,
-        carrera: carrerasMap.get(c.carrera_id) || 'Desconocida',  // 👈 Usar carrera_id
-        cantidad: c._count 
+        carrera: carrerasMap.get(c.carrera_id) || 'Desconocida',
+        cantidad: c._count,
       })),
-      porCiclo: porCiclo.map(c => ({ ciclo: c.ciclo, cantidad: c._count })),
+      porCiclo: porCiclo.map((c: { ciclo: number; _count: number }) => ({ ciclo: c.ciclo, cantidad: c._count })),
     };
+  }
+
+  async getDatosEstudianteForAutorizedUser(estudianteId: string, usuarioId: string, rolUsuario?: string) {
+    // Si no se proporciona el rol, obtenerlo de la base de datos
+    let rol = rolUsuario;
+    if (!rol) {
+      const usuario = await this.prisma.usuario.findUnique({
+        where: { id: usuarioId },
+        include: { rol: true },
+      });
+      rol = usuario?.rol?.nombre || '';
+    }
+
+    // Obtener datos del estudiante
+    const estudiante = await this.prisma.estudiante.findUnique({
+      where: { id: estudianteId },
+      include: {
+        usuario: {
+          include: {
+            rol: true,
+          },
+        },
+        carrera: true,
+        postulaciones: {
+          include: {
+            oferta: {
+              include: {
+                empresa: true,
+              },
+            },
+            asesores: {
+              include: {
+                docente: {
+                  include: {
+                    usuario: true,
+                  },
+                },
+              },
+            },
+            horas: true,
+            informes: true,
+            evaluacion: true,
+          },
+          where: { estado: 'aprobada' },
+        },
+        proyectos_tesis: {
+          include: {
+            asesor: {
+              include: {
+                usuario: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!estudiante) {
+      throw new NotFoundException('Estudiante no encontrado');
+    }
+
+    // Validar permisos según el rol
+    if (rol === 'DOCENTE') {
+      // Docente puede ver solo si es asesor del estudiante
+      const postulacionAprobada = estudiante.postulaciones[0];
+      if (postulacionAprobada) {
+        const esAsesor = postulacionAprobada.asesores.some(a => a.docente_id === usuarioId);
+        if (!esAsesor) {
+          throw new Error('No tienes permiso para ver estos datos');
+        }
+      }
+    } else if (rol === 'REPRESENTANTE_EMPRESA') {
+      // Representante de empresa puede ver si es de la empresa de la postulación
+      const postulacionAprobada = estudiante.postulaciones[0];
+      if (!postulacionAprobada) {
+        throw new Error('No tienes permiso para ver estos datos');
+      }
+
+      const representante = await this.prisma.representanteEmpresa.findFirst({
+        where: { usuario_id: usuarioId },
+      });
+
+      if (!representante || representante.empresa_id !== postulacionAprobada.oferta.empresa_id) {
+        throw new Error('No tienes permiso para ver estos datos');
+      }
+    }
+    // ADMINISTRADOR y COORDINADOR pueden ver todos los datos
+
+    return estudiante;
   }
 }

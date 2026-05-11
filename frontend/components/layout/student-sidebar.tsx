@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   Sun,
-  Moon
+  Moon,
+  UserCircle  // 👈 Agregar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/theme-context';
@@ -22,6 +23,7 @@ const menuItems = [
   { href: '/student', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/student/internships', label: 'Mis Prácticas', icon: Briefcase },
   { href: '/student/thesis', label: 'Mi Tesis', icon: GraduationCap },
+  { href: '/student/profile', label: 'Mi Perfil', icon: UserCircle },  // 👈 Agregar
 ];
 
 interface StudentSidebarProps {
@@ -148,6 +150,16 @@ export function StudentSidebar({ user }: StudentSidebarProps) {
         )}>
 
           {/* Perfil */}
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg w-full transition-colors hover:bg-accent",
+              collapsed && "justify-center"
+            )}
+          >
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            {!collapsed && <span className="text-sm">{theme === 'light' ? 'Modo oscuro' : 'Modo claro'}</span>}
+          </button>
           <div className={cn(
             "flex items-center gap-3 pt-2",
             collapsed ? "justify-center" : ""
